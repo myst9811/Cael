@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { runWatchAgentLoop } from "./watch-agent";
+import { MAX_TOOL_RESULT_CHARS } from "../tools";
 import type { LLMProvider, ToolDefinition, ProviderResponse } from "../providers/types";
 
 const noTools: ToolDefinition[] = [];
@@ -51,14 +52,16 @@ test("end_turn immediately: returns history with assistant message", async () =>
   expect(chunks.join("")).toBe("Memory is 15GB.");
 });
 
-test("falls back to provider.chat when stream is undefined", async () => {
+test("falls back to provider.chat when stream is undefined — emits text via onChunk", async () => {
+  const chunks: string[] = [];
   const history = [{ role: "user" as const, content: "q" }];
   const result = await runWatchAgentLoop(
     mockProvider([{ text: "answer via chat", stopReason: "end_turn" }]),
     history, noTools, SYS,
-    { onChunk: () => {}, onToolCall: () => {} }
+    { onChunk: c => chunks.push(c), onToolCall: () => {} }
   );
   expect(result[1]).toMatchObject({ role: "assistant", content: "answer via chat" });
+  expect(chunks.join("")).toBe("answer via chat");
 });
 
 test("tool call: executes tool, appends tool_result, loops to end_turn", async () => {
@@ -128,7 +131,7 @@ test("large tool output is truncated to MAX_TOOL_RESULT_CHARS", async () => {
   const toolResultMsg = result[2]!;
   const content = Array.isArray(toolResultMsg.content) ? toolResultMsg.content : [];
   const stored = (content[0] as { content: string }).content;
-  expect(stored.length).toBeLessThanOrEqual(10_000 + "\n[output truncated]".length);
+  expect(stored.length).toBeLessThanOrEqual(MAX_TOOL_RESULT_CHARS + "\n[output truncated]".length);
   expect(stored).toContain("[output truncated]");
 });
 

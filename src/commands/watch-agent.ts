@@ -25,9 +25,13 @@ export async function runWatchAgentLoop(
     }
     iterations++;
 
-    const response = provider.stream
-      ? await provider.stream(working, tools, callbacks.onChunk, { system: systemPrompt })
-      : await provider.chat(working, tools, { system: systemPrompt });
+    let response;
+    if (provider.stream) {
+      response = await provider.stream(working, tools, callbacks.onChunk, { system: systemPrompt });
+    } else {
+      response = await provider.chat(working, tools, { system: systemPrompt });
+      if (response.text) callbacks.onChunk(response.text);
+    }
 
     // Defensive: empty toolCalls treated as end_turn regardless of stopReason
     if (response.stopReason === "end_turn" || response.toolCalls.length === 0) {

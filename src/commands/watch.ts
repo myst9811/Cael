@@ -180,6 +180,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   const restoreRaw = setupRawMode((key) => {
     // Handle query submission before state machine
     if (state.mode === "QUERYING" && (key === "\r" || key === "\n")) {
+      if (querying) return;
       const q = state.queryInput.trim();
       if (q) {
         state = { ...state, queryInput: q };
@@ -188,8 +189,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       return;
     }
 
-    // Block dismiss while an agent loop is in progress
+    // Block dismiss while an agent loop is in progress, but allow quit/Ctrl+C through
     if (state.mode === "SHOWING_RESULT" && querying) {
+      if (key === "q" || key === "\x03") { restoreRaw(); cleanup(0); }
       return;
     }
 
