@@ -44,15 +44,16 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
-    process.stdout.write(A.showCursor);
-    process.stdout.write(A.clear);
+    // Exit alternate screen (restores normal scrollback + cursor)
+    process.stdout.write(A.altExit + A.showCursor);
     process.exit(code);
   };
 
   process.on("SIGINT", () => cleanup(0));
   process.on("SIGTERM", () => cleanup(0));
 
-  process.stdout.write(A.hideCursor);
+  // Enter alternate screen + hide cursor — this isolates TUI from scrollback
+  process.stdout.write(A.altEnter + A.hideCursor);
 
   // ── Draw ─────────────────────────────────────────────────────────────────
   const draw = () => {
