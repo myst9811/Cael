@@ -1,0 +1,2 @@
+api	running	Up 3 days	nginx:latest	0.0.0.0:80->80/tcp
+db	running	Up 3 days	postgres:15	5432/tcp

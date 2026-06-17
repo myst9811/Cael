@@ -1,20 +1,35 @@
 import { executeTool, tools } from "./tools";
-import type { LLMProvider, Message } from "./providers/types";
+import type { LLMProvider, Message, ChatOptions } from "./providers/types";
+
+export interface AgentOptions {
+  maxIterations?: number;
+  system?: string;
+}
 
 export async function runAgentLoop(
   provider: LLMProvider,
-  messages: Message[]
+  messages: Message[],
+  options?: AgentOptions
 ): Promise<string> {
   const history = [...messages];
+  const maxIterations = options?.maxIterations ?? 20;
+  const chatOptions: ChatOptions = { system: options?.system };
+  let iterations = 0;
+  let lastText = "";
 
   while (true) {
-    const response = await provider.chat(history, tools);
+    if (iterations >= maxIterations) {
+      return lastText + "\n[Cael: reached maximum iterations without completing analysis]";
+    }
+    iterations++;
+
+    const response = await provider.chat(history, tools, chatOptions);
+    lastText = response.text;
 
     if (response.stopReason === "end_turn" || response.toolCalls.length === 0) {
       return response.text;
     }
 
-    // Append assistant turn with tool_use blocks (required for Anthropic multi-turn)
     const assistantContent: any[] = [];
     if (response.text) assistantContent.push({ type: "text", text: response.text });
     for (const tc of response.toolCalls) {
@@ -23,11 +38,22 @@ export async function runAgentLoop(
     history.push({ role: "assistant", content: assistantContent });
 
     const toolResults = await Promise.all(
-      response.toolCalls.map(async (tc) => ({
-        type: "tool_result",
-        tool_use_id: tc.id,
-        content: await executeTool(tc.name, tc.input),
-      }))
+      response.toolCalls.map(async (tc) => {
+        let content: string;
+        let isError = false;
+        try {
+          content = await executeTool(tc.name, tc.input);
+        } catch (e: any) {
+          content = e?.message ?? String(e);
+          isError = true;
+        }
+        return {
+          type: "tool_result",
+          tool_use_id: tc.id,
+          content,
+          ...(isError ? { is_error: true } : {}),
+        };
+      })
     );
     history.push({ role: "user", content: toolResults });
   }
