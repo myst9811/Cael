@@ -1,20 +1,4 @@
-```
-      ·                              
-    ╭───────╮          ✧            
-  ╭─╯       ╰─╮                     
- ✦       ◆       ✦                  
-  ╰─╮       ╭─╯                     
-    ╰───────╯     ·                 
-
-  ██████╗  █████╗ ███████╗██╗      
- ██╔════╝ ██╔══██╗██╔════╝██║      
- ██║      ███████║█████╗  ██║      
- ██║      ██╔══██║██╔══╝  ██║      
- ╚██████╗ ██║  ██║███████╗███████╗ 
-  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝ 
-
-  local · model-agnostic · DevOps terminal agent
-```
+![Cael](assets/logo.png)
 
 **A live AI brain for your terminal.** Cael watches your system, reasons about it, and answers questions in plain English — grounded in real data, not guesses.
 
