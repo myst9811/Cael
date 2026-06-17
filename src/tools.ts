@@ -93,6 +93,21 @@ export const collectorTools: ToolDefinition[] = [
 
 export const tools: ToolDefinition[] = [...codeTools, ...collectorTools];
 
+const TOOL_TIMEOUT_MS = 10_000;
+
+export async function executeToolWithTimeout(
+  name: string,
+  input: Record<string, any>,
+  timeoutMs = TOOL_TIMEOUT_MS
+): Promise<string> {
+  return Promise.race([
+    executeTool(name, input),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Tool "${name}" timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
 export async function executeTool(name: string, input: Record<string, any>): Promise<string> {
   switch (name) {
     case "read_file":

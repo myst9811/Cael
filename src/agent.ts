@@ -1,4 +1,4 @@
-import { executeTool, tools } from "./tools";
+import { executeToolWithTimeout, tools } from "./tools";
 import type { LLMProvider, Message, ChatOptions } from "./providers/types";
 
 export interface AgentOptions {
@@ -42,7 +42,7 @@ export async function runAgentLoop(
         let content: string;
         let isError = false;
         try {
-          content = await executeTool(tc.name, tc.input);
+          content = await executeToolWithTimeout(tc.name, tc.input);
         } catch (e: any) {
           content = e?.message ?? String(e);
           isError = true;
