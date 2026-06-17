@@ -11,9 +11,12 @@ export const A = {
   brightGreen:   "\x1b[92m",
   hideCursor:    "\x1b[?25l",
   showCursor:    "\x1b[?25h",
-  saveCursor:    "\x1b7",   // save cursor position (DEC private, widely supported)
-  restoreCursor: "\x1b8",   // restore cursor to saved position
-  clearBelow:    "\x1b[0J", // erase from cursor to end of screen
+  saveCursor:    "\x1b7",
+  restoreCursor: "\x1b8",
+  clearBelow:    "\x1b[0J",
+  cursorHome:    "\x1b[H",
+  altEnter:      "\x1b[?1049h",
+  altExit:       "\x1b[?1049l",
 } as const;
 
 // ── Box chars ────────────────────────────────────────────────────────────────
@@ -89,6 +92,7 @@ export function generateAlerts(
 
 export interface FrameOptions {
   cols: number;
+  rows: number;
   systemLines: string[];
   dockerLines: string[];
   gitLines: string[];
@@ -164,20 +168,43 @@ export function buildFrame(opts: FrameOptions): string {
   }
 
   // ── Status / query / AI response ─────────────────────────────────────────
+  // Compute how many rows the status section can fill.
+  //   Fixed rows (excl. status section + bottom border):
+  //     top border(1) + header(1) + panel-sep(1) + panels(5) + alert-sep(1) + alert-rows(A) + status-sep(1) = 11 + A
+  //   Bottom border: 1
+  //   So status rows = opts.rows - 12 - alertRows
+  const alertRows = opts.alerts.length === 0 ? 1 : Math.min(opts.alerts.length, 2);
+  // statusSectionRows: total rows in the status section (content rows + 1 bottom-anchor row).
+  // All three modes produce exactly this many rows so the frame height is always opts.rows.
+  const statusSectionRows = Math.max(3, opts.rows - 12 - alertRows);
+  const contentRows = statusSectionRows - 1; // last row is always the anchor (dismiss/prompt/hint)
+
   frame += `${B.lj}${hline(innerW)}${B.rj}\n`;
 
   if (opts.mode === "IDLE") {
+    // Blank rows above, status hint pinned to the bottom row.
+    for (let i = 0; i < contentRows; i++) {
+      frame += `${B.v}${pad("", innerW)}${B.v}\n`;
+    }
     const idleStatus = opts.statusError
       ? `  ${A.yellow}⚠ collect error: ${opts.statusError}${A.reset}`
       : `  ${A.dim}press / to ask Cael a question${A.reset}`;
     frame += `${B.v}${pad(idleStatus, innerW)}${B.v}\n`;
   } else if (opts.mode === "QUERYING") {
-    const cursor = "\x1b[7m \x1b[0m"; // reversed-video block cursor
+    // Blank rows above, input prompt pinned to the bottom row.
+    for (let i = 0; i < contentRows; i++) {
+      frame += `${B.v}${pad("", innerW)}${B.v}\n`;
+    }
+    const cursor = "\x1b[7m \x1b[0m";
     frame += `${B.v}${pad(`  ${A.brightGreen}>${A.reset} ${opts.queryInput}${cursor}`, innerW)}${B.v}\n`;
   } else {
-    // SHOWING_RESULT — wrap AI response across up to 4 lines
+    // SHOWING_RESULT — wrap response into lines, auto-scroll so latest text is visible.
     const responseLines = wrapWords(opts.aiResponse, innerW - 4);
-    for (const rl of responseLines.slice(0, 4)) {
+    // Show at most contentRows lines; once response overflows, scroll to bottom.
+    const visible = responseLines.length <= contentRows
+      ? [...responseLines, ...Array<string>(contentRows - responseLines.length).fill("")]
+      : responseLines.slice(-contentRows);
+    for (const rl of visible) {
       frame += `${B.v}${pad(`  ${rl}`, innerW)}${B.v}\n`;
     }
     frame += `${B.v}${pad(`  ${A.dim}[any key to dismiss]${A.reset}`, innerW)}${B.v}\n`;

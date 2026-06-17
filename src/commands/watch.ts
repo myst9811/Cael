@@ -52,22 +52,23 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
     process.stdout.removeListener("resize", onResize);
-    process.stdout.write(A.showCursor);
+    process.stdout.write(A.altExit + A.showCursor);
     process.exit(code);
   };
 
   process.on("SIGINT", () => cleanup(0));
   process.on("SIGTERM", () => cleanup(0));
 
-  // Hide cursor and save position right after the logo (printed by index.ts).
-  // Each redraw restores to this position and overwrites the previous frame.
-  process.stdout.write(A.hideCursor + A.saveCursor);
+  // Enter full-screen alternate buffer and hide cursor.
+  process.stdout.write(A.altEnter + A.hideCursor);
 
   // ── Draw ─────────────────────────────────────────────────────────────────
   const draw = () => {
     const cols = process.stdout.columns || 80;
+    const rows = process.stdout.rows || 24;
     const frame = buildFrame({
       cols,
+      rows,
       systemLines: lastCtx ? renderSystemPanel(lastCtx.system) : ["SYSTEM", "  collecting..."],
       dockerLines: lastCtx ? renderDockerPanel(lastCtx.docker) : ["DOCKER", "  collecting..."],
       gitLines:    lastCtx ? renderGitPanel(lastCtx.git)       : ["GIT",    "  collecting..."],
@@ -78,7 +79,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
-    process.stdout.write(A.restoreCursor + frame + A.clearBelow);
+    process.stdout.write(A.cursorHome + frame + A.clearBelow);
   };
 
   // ── Refresh ───────────────────────────────────────────────────────────────
