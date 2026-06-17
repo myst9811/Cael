@@ -4,9 +4,11 @@ import { buildFrame, generateAlerts, A } from "../tui/draw";
 import { createWatchState, handleKey } from "../tui/state";
 import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
-import type { LLMProvider } from "../providers/types";
+import type { LLMProvider, Message } from "../providers/types";
 import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
 import { printLogo, LOGO_ROWS } from "../assets/logo";
+import { runWatchAgentLoop } from "./watch-agent";
+import { watchTools } from "../tools";
 
 const REFRESH_MS = 5000;
 
@@ -46,6 +48,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let querying = false;
   let lastRefreshError: string | null = null;
+  let conversationHistory: Message[] = [];
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const onResize = () => { if (!querying) draw(); };
@@ -76,6 +79,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       mode: state.mode,
       queryInput: state.queryInput,
       aiResponse: state.aiResponse,
+      agentActivity: state.agentActivity,
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
@@ -109,31 +113,42 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     querying = true;
     if (refreshTimer) clearInterval(refreshTimer);
 
-    // Collect fresh context
+    // Collect a fresh snapshot for the system prompt
     let ctx = lastCtx;
     try { ctx = await collectAll(); lastCtx = ctx; } catch (e: unknown) {
       lastRefreshError = e instanceof Error ? e.message : "collection failed";
     }
 
     const systemPrompt = ctx ? formatSystemPrompt(ctx) : "You are Cael, a DevOps agent.";
-    const messages = [{ role: "user" as const, content: question }];
 
-    state = { ...state, mode: "SHOWING_RESULT", aiResponse: "⟳ thinking..." };
+    // Build input history without mutating conversationHistory yet
+    const inputHistory: Message[] = [
+      ...conversationHistory,
+      { role: "user" as const, content: question },
+    ];
+
+    state = { ...state, mode: "SHOWING_RESULT", aiResponse: "", agentActivity: "" };
     draw();
 
     try {
-      if (provider.stream) {
-        state = { ...state, aiResponse: "" };
-        draw();
-        await provider.stream(messages, [], (chunk) => {
-          state = { ...state, aiResponse: state.aiResponse + chunk };
-          draw();
-        }, { system: systemPrompt });
-      } else {
-        const { text } = await provider.chat(messages, [], { system: systemPrompt });
-        state = { ...state, aiResponse: text || "(no response)" };
-        draw();
-      }
+      const updatedHistory = await runWatchAgentLoop(
+        provider,
+        inputHistory,
+        watchTools,
+        systemPrompt,
+        {
+          onChunk: (chunk) => {
+            if (!chunk) return;
+            state = { ...state, aiResponse: state.aiResponse + chunk };
+            draw();
+          },
+          onToolCall: (name) => {
+            state = { ...state, agentActivity: `⟳ calling ${name}...` };
+            draw();
+          },
+        }
+      );
+      conversationHistory = updatedHistory;
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err);
       let friendly = raw;
@@ -153,8 +168,10 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       state = { ...state, aiResponse: `Error: ${friendly}` };
       draw();
     } finally {
+      state = { ...state, agentActivity: "" };
       querying = false;
       refreshTimer = setInterval(doRefresh, REFRESH_MS);
+      draw();
     }
   };
 
@@ -167,6 +184,11 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
         state = { ...state, queryInput: q };
         submitQuery(q).catch(() => {});
       }
+      return;
+    }
+
+    // Block dismiss while an agent loop is in progress
+    if (state.mode === "SHOWING_RESULT" && querying) {
       return;
     }
 
