@@ -4,6 +4,7 @@ import { runAgent, runAgentLoop } from "./src/agent";
 import { runAsk } from "./src/commands/ask";
 import { runDeployCheck } from "./src/commands/deploy-check";
 import { runPostmortem } from "./src/commands/postmortem";
+import { runWatch } from "./src/commands/watch";
 import { printLogo } from "./src/assets/logo";
 
 const SUBCOMMANDS = ["ask", "watch", "deploy-check", "postmortem"] as const;
@@ -62,6 +63,8 @@ if (import.meta.main) {
       runDeployCheck(provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else if (subcommand === "postmortem") {
       runPostmortem(prompt ?? "", provider).catch((e) => { console.error(e.message); process.exit(1); });
+    } else if (subcommand === "watch") {
+      runWatch(provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else if (prompt) {
       runAgent(prompt, provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else {

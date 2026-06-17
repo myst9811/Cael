@@ -143,9 +143,9 @@ export function buildFrame(opts: FrameOptions): string {
   const git = opts.gitLines;
 
   for (let i = 0; i < PANEL_ROWS; i++) {
-    const l = i < sys.length ? sys[i] : "";
-    const m = i < doc.length ? doc[i] : "";
-    const r = i < git.length ? git[i] : "";
+    const l = (i < sys.length ? sys[i] : undefined) ?? "";
+    const m = (i < doc.length ? doc[i] : undefined) ?? "";
+    const r = (i < git.length ? git[i] : undefined) ?? "";
     frame += `${B.v}${pad(l, w1)}${B.v}${pad(m, w2)}${B.v}${pad(r, w3)}${B.v}\n`;
   }
 
