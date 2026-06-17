@@ -96,6 +96,7 @@ export interface FrameOptions {
   queryInput: string;
   aiResponse: string;
   timestamp: string;
+  statusError?: string | null;
 }
 
 function wrapWords(text: string, width: number): string[] {
@@ -165,7 +166,10 @@ export function buildFrame(opts: FrameOptions): string {
   frame += `${B.lj}${hline(innerW)}${B.rj}\n`;
 
   if (opts.mode === "IDLE") {
-    frame += `${B.v}${pad(`  ${A.dim}press / to ask Cael a question${A.reset}`, innerW)}${B.v}\n`;
+    const idleStatus = opts.statusError
+      ? `  ${A.yellow}⚠ collect error: ${opts.statusError}${A.reset}`
+      : `  ${A.dim}press / to ask Cael a question${A.reset}`;
+    frame += `${B.v}${pad(idleStatus, innerW)}${B.v}\n`;
   } else if (opts.mode === "QUERYING") {
     const cursor = "\x1b[7m \x1b[0m"; // reversed-video block cursor
     frame += `${B.v}${pad(`  ${A.brightGreen}>${A.reset} ${opts.queryInput}${cursor}`, innerW)}${B.v}\n`;

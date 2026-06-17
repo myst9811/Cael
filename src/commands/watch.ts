@@ -5,25 +5,29 @@ import { createWatchState, handleKey } from "../tui/state";
 import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
 import type { LLMProvider } from "../providers/types";
-import type { CollectedContext } from "../collectors/types";
+import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
 
 const REFRESH_MS = 5000;
 
-function formatSystemPrompt(ctx: CollectedContext): string {
-  const sys = "error" in ctx.system
-    ? "unavailable"
-    : `CPU ${(ctx.system as any).cpu_percent?.toFixed(1)}%, MEM ${(ctx.system as any).mem_used_gb?.toFixed(1)}/${(ctx.system as any).mem_total_gb?.toFixed(0)}GB, DISK ${(ctx.system as any).disk_percent?.toFixed(1)}%`;
+function isError(v: unknown): v is CollectorError {
+  return typeof v === "object" && v !== null && "error" in v;
+}
 
-  const docker = "error" in ctx.docker
+function formatSystemPrompt(ctx: CollectedContext): string {
+  const sys = isError(ctx.system)
     ? "unavailable"
-    : (ctx.docker as any).available
-      ? (ctx.docker as any).containers.map((c: any) => `${c.name}(${c.status})`).join(", ") || "no containers"
+    : `CPU ${(ctx.system as SystemMetrics).cpu_percent.toFixed(1)}%, MEM ${(ctx.system as SystemMetrics).mem_used_gb.toFixed(1)}/${(ctx.system as SystemMetrics).mem_total_gb.toFixed(0)}GB, DISK ${(ctx.system as SystemMetrics).disk_percent.toFixed(1)}%`;
+
+  const docker = isError(ctx.docker)
+    ? "unavailable"
+    : (ctx.docker as DockerStatus).available
+      ? (ctx.docker as DockerStatus).containers.map((c) => `${c.name}(${c.status})`).join(", ") || "no containers"
       : "daemon unavailable";
 
-  const git = "error" in ctx.git
+  const git = isError(ctx.git)
     ? "unavailable"
-    : (ctx.git as any).is_git_repo
-      ? `branch ${(ctx.git as any).branch}, ${(ctx.git as any).dirty_files ?? 0} dirty, ${(ctx.git as any).unpushed_commits ?? "?"} unpushed`
+    : (ctx.git as GitStatus).is_git_repo
+      ? `branch ${(ctx.git as GitStatus).branch}, ${(ctx.git as GitStatus).dirty_files ?? 0} dirty, ${(ctx.git as GitStatus).unpushed_commits ?? "?"} unpushed`
       : "not a git repo";
 
   return `You are Cael, a DevOps agent. Answer in 2-3 concise sentences based on the live snapshot.
@@ -40,10 +44,14 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   let lastCtx: CollectedContext | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   let querying = false;
+  let lastRefreshError: string | null = null;
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
+  const onResize = () => { if (!querying) draw(); };
+
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
+    process.stdout.removeListener("resize", onResize);
     process.stdout.write(A.showCursor);
     process.exit(code);
   };
@@ -68,6 +76,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       queryInput: state.queryInput,
       aiResponse: state.aiResponse,
       timestamp: new Date().toLocaleTimeString(),
+      statusError: lastRefreshError,
     });
     process.stdout.write(A.restoreCursor + frame);
   };
@@ -77,13 +86,16 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     if (querying) return;
     try {
       lastCtx = await collectAll();
-    } catch {}
+      lastRefreshError = null;
+    } catch (e: unknown) {
+      lastRefreshError = e instanceof Error ? e.message : "collection failed";
+    }
     if (!querying && state.mode === "IDLE") draw();
   };
 
   await doRefresh();
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
-  process.stdout.on("resize", () => { if (!querying) draw(); });
+  process.stdout.on("resize", onResize);
 
   // ── AI query ──────────────────────────────────────────────────────────────
   const submitQuery = async (question: string) => {
@@ -92,7 +104,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
 
     // Collect fresh context
     let ctx = lastCtx;
-    try { ctx = await collectAll(); lastCtx = ctx; } catch {}
+    try { ctx = await collectAll(); lastCtx = ctx; } catch (e: unknown) {
+      lastRefreshError = e instanceof Error ? e.message : "collection failed";
+    }
 
     const systemPrompt = ctx ? formatSystemPrompt(ctx) : "You are Cael, a DevOps agent.";
     const messages = [{ role: "user" as const, content: question }];
@@ -109,13 +123,12 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
           draw();
         }, { system: systemPrompt });
       } else {
-        // Fallback: non-streaming
         const { text } = await provider.chat(messages, [], { system: systemPrompt });
         state = { ...state, aiResponse: text || "(no response)" };
         draw();
       }
-    } catch (err: any) {
-      state = { ...state, aiResponse: `Error: ${err.message}` };
+    } catch (err: unknown) {
+      state = { ...state, aiResponse: `Error: ${err instanceof Error ? err.message : String(err)}` };
       draw();
     } finally {
       querying = false;
