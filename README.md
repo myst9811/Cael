@@ -1,251 +1,201 @@
 ![Cael](assets/logo.png)
 
-**A live AI brain for your terminal.** Cael watches your system, reasons about it, and answers questions in plain English — grounded in real data, not guesses.
+You're on-call. A container keeps restarting. You have five tabs open — Grafana, CloudWatch, a Docker shell, a Slack thread, and the runbook nobody's touched since 2023. You already know the answer is in there somewhere.
 
-> Built with [Bun](https://bun.sh). Runs anywhere. Talks to any LLM.
+**Cael collapses those tabs into one question.**
+
+```
+> why does the api container keep restarting?
+
+⟳ calling get_docker_logs...
+
+The api container has OOMKilled 3 times in the last hour. It's
+running with no memory limit set, and the process list shows it
+consuming 2.1 GB — the host only has 3.8 GB free. Set a memory
+limit on the container or increase the instance size before the
+next deploy.
+```
+
+No copy-pasting logs. No switching context. Cael reads your live system state and reasons about it — Docker logs, process list, git status, disk and CPU — then tells you what it found.
 
 ---
 
-## What does it actually do?
+## The pitch for your workflow
 
-Most AI tools are chat interfaces bolted onto an editor. Cael is different: it's a **live DevOps dashboard with an agent loop running inside it**.
+Cael isn't trying to replace Datadog or replace your runbooks. It's the **first step** when something goes wrong or you need a quick read before a deploy:
+
+| Situation | What you do now | With Cael |
+|---|---|---|
+| Container keeps crashing | Open logs, grep, check metrics, cross-reference | `cael watch` → press `/` → ask |
+| Pre-deploy sanity check | Check git, check CPU, check running jobs, guess | `cael deploy-check` → scored verdict |
+| Writing a postmortem | Reconstruct the timeline manually | `cael postmortem` → draft in seconds |
+| New service, no idea what it does | Read the code, ask a colleague | `cael ask "what is this service doing right now?"` |
+| Oncall handoff | Write a status update from memory | Ask Cael, paste the answer |
+
+---
+
+## `cael watch` — always-on dashboard with an agent inside
 
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║  cael watch   11:28 PM         [/] ask          [q] quit    ║
+║  cael watch   02:14 AM         [/] ask          [q] quit    ║
 ╠══════════════════╦═══════════════════╦═══════════════════════╣
 ║  SYSTEM          ║  DOCKER           ║  GIT                 ║
-║    CPU   4%      ║    daemon running ║    feat/agentic-mode  ║
-║    MEM   15.3GB  ║    api       ● UP ║    1 untracked file  ║
-║    DISK  44%     ║    worker    ✕ -- ║    0 unpushed        ║
-║    LOAD  1.65    ║    db        ● UP ║                      ║
+║    CPU   78%     ║    daemon running ║    hotfix/payment    ║
+║    MEM   14.1GB  ║    api       ● UP ║    0 untracked       ║
+║    DISK  91%     ║    worker    ✕ -- ║    2 unpushed        ║
+║    LOAD  6.20    ║    db        ● UP ║                      ║
 ╠══════════════════╩═══════════════════╩═══════════════════════╣
-║  ⚠ Memory 97% used                                          ║
+║  ⚠ Disk 91% full  ⚠ CPU 78% high                           ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  > what's eating all my memory?                             ║
+║  > is it safe to push this hotfix right now?                ║
 ║                                                              ║
-║  ⟳ calling get_process_list...                              ║
+║  ⟳ calling get_git_status...                                ║
 ║                                                              ║
-║  The top consumers are Bun (1.8 GB), VS Code (1.2 GB),      ║
-║  and Chrome (4.1 GB across 12 tabs). Your system is at      ║
-║  97% — consider closing browser tabs or restarting VS Code  ║
-║  extensions to reclaim ~2 GB quickly.                       ║
+║  Disk is at 91% — a deploy that writes logs or build        ║
+║  artifacts could push it to 100% and bring the host down.  ║
+║  CPU is also elevated at 78%. The worker container is       ║
+║  stopped. I'd resolve disk and worker first, then deploy.   ║
 ║                                                              ║
 ║  [↑↓] scroll · [any other key] dismiss                      ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-Press `/`, ask a question. Cael **actually runs tools** — checks your process list, reads Docker logs, inspects git state — then gives you an answer grounded in the real current state of your machine. Not vibes. Facts.
+Dashboard refreshes every 5 seconds. Press `/` to ask a question. The agent actually runs tools — checks the process list, reads Docker logs, inspects git — then gives you an answer grounded in your real current state, not its training data.
+
+Conversation persists in the session, so follow-ups work:
+
+```
+> which process is eating the disk?
+> okay killed it, is the deploy safe now?
+> what changed in the last 3 commits?
+```
 
 ---
 
-## The agent loop, visualised
+## `cael deploy-check` — go / no-go in 5 seconds
+
+Run it before every push. Takes a snapshot, scores it, tells you why.
 
 ```
-  You press /                    
-      │                          
-      ▼                          
-  ┌─────────────────────────────┐
-  │  "what's eating my memory?" │
-  └────────────┬────────────────┘
-               │
-               ▼
-      ┌─────────────────┐
-      │  Cael thinks... │  ← LLM sees live snapshot
-      └────────┬────────┘
-               │ calls tool
-               ▼
-      ┌─────────────────┐
-      │ get_process_list│  ← real data, not fabricated
-      └────────┬────────┘
-               │ result
-               ▼
-      ┌─────────────────┐
-      │  Cael thinks... │  ← reasons over actual output
-      └────────┬────────┘
-               │ end_turn
-               ▼
-      ┌──────────────────────────────────────────────┐
-      │  "Chrome is using 4.1 GB across 12 tabs..."  │
-      └──────────────────────────────────────────────┘
+╔══════════════════════════════════════════════════════════════╗
+║  DEPLOY CHECK                               score: 61/100   ║
+╠══════════════════════════════════════════════════════════════╣
+║  ✓  CPU nominal                  (12%)                      ║
+║  ✓  Memory OK                    (58%)                      ║
+║  ✕  Disk critical                (91%) ← fix this first     ║
+║  ⚠  2 unpushed commits                                      ║
+║  ✕  worker container stopped                                ║
+╠══════════════════════════════════════════════════════════════╣
+║  Verdict: NO-GO. Disk is near capacity and a container is   ║
+║  down. Resolve both before deploying to avoid a bad deploy  ║
+║  making an already degraded system worse.                   ║
+╚══════════════════════════════════════════════════════════════╝
 ```
 
-Every answer is backed by a real tool call. Conversation history persists across queries in a session, so follow-up questions just work.
-
----
-
-## Commands
-
-### `cael watch` — live dashboard + AI agent
+Wire it into your deploy script to make it a hard gate:
 
 ```bash
-bun run index.ts --provider anthropic:claude-opus-4-8 watch
+cael deploy-check && ./deploy.sh
 ```
-
-The crown jewel. A full-screen TUI that refreshes every 5 seconds and lets you interrogate your system in plain English. The agent can:
-
-- Run `get_process_list` → find what's burning CPU or RAM
-- Call `get_docker_logs` → diagnose container crashes
-- Use `run_shell` → dig deeper with real commands  
-- Check `get_git_status` → tell you if it's safe to deploy
-- Read files → inspect config, logs, whatever
-
-Multi-turn conversation. Streaming responses. Tool activity shown live. Scroll long answers with `↑↓`.
 
 ---
 
-### `cael ask` — one-shot question
+## `cael postmortem` — draft the incident report automatically
 
 ```bash
-bun run index.ts --provider anthropic:claude-opus-4-8 ask "why is disk usage so high?"
+bun run index.ts --provider anthropic:claude-opus-4-8 postmortem "api down 02:00–02:47"
 ```
 
-Same agent loop, no dashboard. Ask and get out.
+Reads logs, git history, and process state from the incident window. Outputs a structured draft: timeline, probable cause, contributing factors, action items. You review, you edit, you ship it — no starting from a blank page at 4am.
 
 ---
 
-### `cael deploy-check` — go / no-go before pushing
+## `cael ask` — one-shot, no dashboard
+
+For when you just need an answer fast:
 
 ```bash
-bun run index.ts --provider anthropic:claude-opus-4-8 deploy-check
+cael ask "what process is using the most memory right now?"
+cael ask "did anything get deployed in the last 2 hours?"
+cael ask "why is load average spiking?"
 ```
 
-```
-╔══════════════════════════════════════╗
-║  DEPLOY CHECK          score: 82/100 ║
-╠══════════════════════════════════════╣
-║  ✓  CPU nominal          (4%)        ║
-║  ✓  Memory OK            (61%)       ║
-║  ✓  Disk healthy         (44%)       ║
-║  ⚠  2 dirty files in git            ║
-║  ✓  All containers UP               ║
-╠══════════════════════════════════════╣
-║  Verdict: CAUTION — commit or stash  ║
-║  your changes before deploying.      ║
-╚══════════════════════════════════════╝
-```
-
-Scores your system 0–100. Plain-English verdict. No surprises in prod.
+Same agent, same tools, no TUI. Pipe it anywhere.
 
 ---
 
-### `cael postmortem` — incident report, auto-drafted
-
-```bash
-bun run index.ts --provider anthropic:claude-opus-4-8 postmortem "api went down at 3am"
-```
-
-Reads logs, git history, and process state. Drafts the incident report. You edit, you ship.
-
----
-
-### REPL — interactive agent session
+## REPL — extended investigation session
 
 ```bash
 bun run index.ts --provider anthropic:claude-opus-4-8
-# cael> find all TODO comments in this repo
-# cael> now fix the one in src/tools.ts
-# cael> run the tests
+# cael> walk me through what this service is doing
+# cael> which of those containers has the most restarts in the last day?
+# cael> show me the last 50 lines of the worker logs
+# cael> is there anything in git that explains this behaviour?
 ```
 
-Full tool access. Multi-turn. Your terminal, your rules.
+Full tool access. Multi-turn. History persists until you exit.
 
 ---
 
 ## Install
 
 ```bash
-git clone <this repo>
-cd cael
+git clone https://github.com/myst9811/Cael
+cd Cael
 bun install
 ```
 
-## Keys
+Set at least one key:
 
 ```bash
-# Pick one or more — Cael uses whatever you give it
-export ANTHROPIC_API_KEY=sk-ant-...
-export OPENAI_API_KEY=sk-...
-# Ollama: no key needed, just have it running
+export ANTHROPIC_API_KEY=sk-ant-...   # Claude
+export OPENAI_API_KEY=sk-...          # GPT-4o, etc.
+# Ollama: nothing — runs 100% local, no key needed
 ```
 
 ---
 
 ## Providers
 
-| Provider | Format | Example model |
+Anything that speaks OpenAI-compatible is a one-liner:
+
+| Provider | Flag | Notes |
 |---|---|---|
-| Anthropic | `anthropic:<model>` | `anthropic:claude-opus-4-8` |
-| OpenAI | `openai:<model>` | `openai:gpt-4o` |
-| Ollama (local) | `ollama:<model>` | `ollama:llama3.2` |
-| OpenRouter | set `OPENAI_BASE_URL` | any of 200+ models |
+| Anthropic | `--provider anthropic:claude-opus-4-8` | Best reasoning |
+| OpenAI | `--provider openai:gpt-4o` | |
+| Ollama | `--provider ollama:llama3.2` | Fully local, no API key |
+| OpenRouter | `--provider openai:<any-model>` + `OPENAI_BASE_URL=https://openrouter.ai/api/v1` | 200+ models |
 
-**OpenRouter** — drop-in, zero extra code:
-
-```bash
-OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
-  bun run index.ts --provider openai:meta-llama/llama-3.1-70b-instruct watch
-```
+If you're in an air-gapped environment or have data residency requirements, Ollama gives you everything locally — no data leaves the machine.
 
 ---
 
-## Tools
+## What the agent can see
 
-The agent can pick any of these on its own:
-
-| Tool | What it does |
+| Tool | What it reads |
 |---|---|
-| `get_process_list` | Running processes sorted by CPU or RAM |
 | `get_system_metrics` | CPU, memory, disk, load average |
-| `get_docker_status` | All containers + health |
-| `get_docker_logs` | Recent logs from any container |
+| `get_process_list` | Running processes sorted by CPU or RAM |
+| `get_docker_status` | All containers and their health |
+| `get_docker_logs` | Recent logs from any named container |
 | `get_git_status` | Branch, dirty files, unpushed commits |
-| `read_file` | Read any file in the project |
-| `run_shell` | Execute a shell command (no shell injection — args parsed safely) |
-| `list_dir` | List a directory |
+| `read_file` | Any file on disk |
+| `run_shell` | Runs a command and returns the output |
+| `list_dir` | Directory listing |
 
-> `write_file` is available in full agent mode but intentionally excluded from `cael watch` — the dashboard agent is read-only by design.
-
----
-
-## Architecture
-
-```
-index.ts
-  └── createProvider(spec)          → LLMProvider
-        ├── anthropic.ts
-        ├── openai.ts
-        └── ollama.ts
-
-  └── runWatchAgentLoop(...)         → multi-turn, streaming, tools
-        ├── provider.stream / .chat
-        ├── executeToolWithTimeout
-        └── returns Message[]        → persisted as conversationHistory
-
-  └── collectAll()                   → CollectedContext
-        ├── system.ts    (CPU/mem/disk)
-        ├── docker.ts    (containers)
-        ├── git.ts       (branch/status)
-        └── process.ts   (process list)
-
-  └── buildFrame(opts)               → string (the TUI you see)
-        ├── draw.ts      (frame math, ANSI codes)
-        ├── panels.ts    (SYSTEM / DOCKER / GIT panels)
-        └── state.ts     (mode machine: IDLE → QUERYING → SHOWING_RESULT)
-```
-
-One binary. No daemon. No cloud sync. No telemetry. Just a Bun process talking to the LLM of your choice.
+The watch dashboard agent has no `write_file` — it's read-only by design. The full REPL has write access.
 
 ---
 
 ## Stack
 
-- **[Bun](https://bun.sh)** — runtime, file I/O, shell execution, test runner
-- **[Anthropic SDK](https://github.com/anthropic-ai/anthropic-sdk-typescript)** — Claude models
-- **[OpenAI SDK](https://github.com/openai/openai-node)** — OpenAI + any OpenAI-compatible endpoint
-- **Ollama** — local models over HTTP, no SDK needed
-- Pure ANSI TUI — no ncurses, no external UI library
+- **[Bun](https://bun.sh)** — runtime, built-in SQLite, shell, test runner. No Node.
+- **[Anthropic SDK](https://github.com/anthropic-ai/anthropic-sdk-typescript)** — streaming, tool use
+- **[OpenAI SDK](https://github.com/openai/openai-node)** — OpenAI + any compatible endpoint
+- Pure ANSI TUI — no ncurses, no external UI framework
 
 ---
 
@@ -255,8 +205,8 @@ One binary. No daemon. No cloud sync. No telemetry. Just a Bun process talking t
 bun test
 ```
 
-165 tests. Pure unit tests — no LLM calls, no network, fast.
+165 tests, no network calls, no mocks of the LLM. Fast.
 
 ---
 
-> *Built for learning. Hack on it. Break it. Make it yours.*
+> Cael doesn't know your infrastructure better than you do. It just stops you from having to hold it all in your head at 2am.
