@@ -191,7 +191,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
     }
 
     case "write_file": {
-      if (!input.path || !input.content) return "Error: path and content are required";
+      if (input.path == null) return "Error: path is required";
+      if (input.content == null) return "Error: content is required";
       const safePath = await assertWithinCwd(String(input.path));
       await Bun.write(safePath, String(input.content));
       return `Written to ${input.path}`;
@@ -236,9 +237,10 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
 
     case "get_docker_logs": {
       if (!input.container) return "Error: container is required";
+      const linesRaw = input.lines !== undefined ? Number(input.lines) : undefined;
       const result = await getDockerLogs(
         String(input.container),
-        input.lines !== undefined ? Number(input.lines) : undefined,
+        linesRaw !== undefined && Number.isFinite(linesRaw) ? linesRaw : undefined,
         input.since !== undefined ? String(input.since) : undefined
       );
       return result.truncated ? `${result.logs}\n[Note: output truncated at 10KB]` : result.logs;
@@ -251,7 +253,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
 
     case "get_process_list": {
       const sortBy = input.sort_by === "mem" ? "mem" : "cpu";
-      const limit = input.limit !== undefined ? Number(input.limit) : undefined;
+      const limitRaw = input.limit !== undefined ? Number(input.limit) : undefined;
+      const limit = limitRaw !== undefined && Number.isFinite(limitRaw) ? limitRaw : undefined;
       const pl = await getProcessList(sortBy, limit);
       return JSON.stringify(pl, null, 2);
     }
