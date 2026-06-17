@@ -80,3 +80,7 @@ test("ESC clears queryInput when returning to IDLE", () => {
   expect(state.queryInput).toBe("");
   expect(state.mode).toBe("IDLE");
 });
+
+test("createWatchState initialises agentActivity to empty string", () => {
+  expect(createWatchState().agentActivity).toBe("");
+});

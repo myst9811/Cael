@@ -5,10 +5,11 @@ export interface WatchState {
   mode: WatchMode;
   queryInput: string;
   aiResponse: string;
+  agentActivity: string;
 }
 
 export function createWatchState(): WatchState {
-  return { mode: "IDLE", queryInput: "", aiResponse: "" };
+  return { mode: "IDLE", queryInput: "", aiResponse: "", agentActivity: "" };
 }
 
 export function handleKey(
