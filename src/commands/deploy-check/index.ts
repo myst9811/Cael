@@ -2,7 +2,7 @@ import { collectAll } from "../../collectors";
 import { runAgentLoop } from "../../agent";
 import { tools } from "../../tools";
 import { calculateDeployScore } from "./scorer";
-import { formatDeployCheck } from "./formatter";
+import { formatDeployCheck, formatScoreTable } from "./formatter";
 import type { LLMProvider } from "../../providers/types";
 import type { SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../../collectors/types";
 
@@ -21,19 +21,17 @@ export async function runDeployCheck(provider: LLMProvider): Promise<void> {
 
   const system = isError(ctx.system) ? null : ctx.system as SystemMetrics;
   const docker = isError(ctx.docker) ? { available: false, containers: [] } : ctx.docker as DockerStatus;
-  const git = isError(ctx.git) ? {} : ctx.git as GitStatus;
+  const git = isError(ctx.git) ? null : ctx.git as GitStatus;
 
   const input = {
     cpu_percent:  system?.cpu_percent  ?? 0,
     mem_percent:  system?.mem_percent  ?? 0,
     disk_percent: system?.disk_percent ?? 0,
     docker: { available: docker.available, containers: docker.containers },
-    git: { dirty_files: git.dirty_files, unpushed_commits: git.unpushed_commits },
+    git: { dirty_files: git?.dirty_files, unpushed_commits: git?.unpushed_commits },
   };
 
   const result = calculateDeployScore(input);
-
-  const { formatScoreTable } = await import("./formatter");
   const scoreTable = formatScoreTable(result);
 
   process.stdout.write(`[${provider.name}] generating assessment...\n\n`);

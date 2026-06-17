@@ -1,4 +1,4 @@
-import type { LLMProvider, Message, ToolDefinition, ProviderResponse } from "./types";
+import type { LLMProvider, Message, ToolDefinition, ProviderResponse, ChatOptions } from "./types";
 
 export class OllamaProvider implements LLMProvider {
   name = "ollama";
@@ -10,45 +10,121 @@ export class OllamaProvider implements LLMProvider {
     this.baseUrl = baseUrl;
   }
 
-  async stream(messages: Message[], tools: ToolDefinition[], onChunk: (t: string) => void): Promise<ProviderResponse> {
+  async stream(
+    messages: Message[],
+    tools: ToolDefinition[],
+    onChunk: (t: string) => void,
+    options?: ChatOptions,
+  ): Promise<ProviderResponse> {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      messages,
+      tools: tools.map(t => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.input_schema },
+      })),
+      stream: true,
+    };
+
+    // Inject system prompt as the first message (Ollama uses the messages array).
+    if (options?.system) {
+      const systemMsg = { role: "system", content: options.system };
+      body.messages = [systemMsg, ...messages];
+    }
+
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        tools: tools.map(t => ({
-          type: "function",
-          function: { name: t.name, description: t.description, parameters: t.input_schema },
-        })),
-        stream: true,
-      }),
+      body: JSON.stringify(body),
     });
 
+    if (!res.ok) {
+      throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
+    }
+    if (!res.body) {
+      throw new Error("Ollama returned a response with no body");
+    }
+
     let fullText = "";
-    const toolCalls: any[] = [];
-    const reader = res.body!.getReader();
+    const toolCalls: Array<{ function: { name: string; arguments: unknown } }> = [];
+
+    // Buffer partial lines across read() calls to handle chunk boundaries correctly.
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    let lineBuffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value).split("\n").filter(Boolean);
+      lineBuffer += decoder.decode(value, { stream: true });
+      const lines = lineBuffer.split("\n");
+      // Keep the last (possibly incomplete) line in the buffer.
+      lineBuffer = lines.pop() ?? "";
       for (const line of lines) {
-        const data = JSON.parse(line);
-        if (data.message?.content) { onChunk(data.message.content); fullText += data.message.content; }
-        if (data.message?.tool_calls) toolCalls.push(...data.message.tool_calls);
+        if (!line.trim()) continue;
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(line);
+        } catch {
+          // Malformed line (e.g. server-side error text) — skip.
+          continue;
+        }
+        const msg = data.message as Record<string, unknown> | undefined;
+        if (typeof msg?.content === "string") {
+          onChunk(msg.content);
+          fullText += msg.content;
+        }
+        if (Array.isArray(msg?.tool_calls)) {
+          for (const tc of msg.tool_calls as unknown[]) {
+            if (
+              typeof tc === "object" && tc !== null &&
+              typeof (tc as Record<string, unknown>).function === "object" &&
+              typeof ((tc as { function: Record<string, unknown> }).function)?.name === "string"
+            ) {
+              toolCalls.push(tc as (typeof toolCalls)[number]);
+            }
+          }
+        }
+      }
+    }
+
+    // Flush any trailing content that lacked a final newline.
+    if (lineBuffer.trim()) {
+      try {
+        const data = JSON.parse(lineBuffer) as Record<string, unknown>;
+        const msg = data.message as Record<string, unknown> | undefined;
+        if (typeof msg?.content === "string") {
+          onChunk(msg.content);
+          fullText += msg.content;
+        }
+        if (Array.isArray(msg?.tool_calls)) {
+          for (const tc of msg.tool_calls as unknown[]) {
+            if (
+              typeof tc === "object" && tc !== null &&
+              typeof (tc as Record<string, unknown>).function === "object" &&
+              typeof ((tc as { function: Record<string, unknown> }).function)?.name === "string"
+            ) {
+              toolCalls.push(tc as (typeof toolCalls)[number]);
+            }
+          }
+        }
+      } catch {
+        // Malformed final chunk — skip.
       }
     }
 
     return {
       text: fullText,
-      toolCalls: toolCalls.map(tc => ({ id: crypto.randomUUID(), name: tc.function.name, input: tc.function.arguments })),
+      toolCalls: toolCalls.map(tc => ({
+        id: crypto.randomUUID(),
+        name: tc.function.name,
+        input: tc.function.arguments as Record<string, unknown>,
+      })),
       stopReason: toolCalls.length > 0 ? "tool_use" : "end_turn",
     };
   }
 
-  async chat(messages: Message[], tools: ToolDefinition[]): Promise<ProviderResponse> {
-    return this.stream(messages, tools, () => {});
+  async chat(messages: Message[], tools: ToolDefinition[], options?: ChatOptions): Promise<ProviderResponse> {
+    return this.stream(messages, tools, () => {}, options);
   }
 }

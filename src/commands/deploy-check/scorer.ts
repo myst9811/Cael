@@ -116,7 +116,9 @@ function scoreGit(git: DeployInput["git"]): CheckItem {
   const unpushed = git.unpushed_commits;
 
   const hasDirty = dirty > 0;
-  const hasUnpushed = unpushed === null ? true : unpushed > 0;
+  // null means upstream is unknown; undefined means git data was unavailable — both
+  // mean we can't confirm commits are pushed, so treat the same as "has unpushed".
+  const hasUnpushed = unpushed == null ? true : unpushed > 0;
 
   if (!hasDirty && !hasUnpushed) {
     return { score: 20, max: 20, label: "clean" };
@@ -124,12 +126,12 @@ function scoreGit(git: DeployInput["git"]): CheckItem {
   if (hasDirty && hasUnpushed) {
     const parts = [];
     if (dirty > 0) parts.push(`${dirty} dirty`);
-    if (unpushed === null) parts.push("upstream unknown");
+    if (unpushed == null) parts.push("upstream unknown");
     else if (unpushed > 0) parts.push(`${unpushed} unpushed`);
     return { score: 0, max: 20, label: parts.join(", "), warning: true };
   }
   const label = hasDirty
     ? `${dirty} dirty file${dirty > 1 ? "s" : ""}`
-    : unpushed === null ? "upstream unknown" : `${unpushed} unpushed`;
+    : unpushed == null ? "upstream unknown" : `${unpushed} unpushed`;
   return { score: 10, max: 20, label, warning: true };
 }

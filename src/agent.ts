@@ -1,5 +1,5 @@
 import { executeToolWithTimeout, tools } from "./tools";
-import type { LLMProvider, Message, ChatOptions } from "./providers/types";
+import type { LLMProvider, Message, ContentBlock, ChatOptions } from "./providers/types";
 
 export interface AgentOptions {
   maxIterations?: number;
@@ -30,29 +30,24 @@ export async function runAgentLoop(
       return response.text;
     }
 
-    const assistantContent: any[] = [];
+    const assistantContent: ContentBlock[] = [];
     if (response.text) assistantContent.push({ type: "text", text: response.text });
     for (const tc of response.toolCalls) {
       assistantContent.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
     }
     history.push({ role: "assistant", content: assistantContent });
 
-    const toolResults = await Promise.all(
-      response.toolCalls.map(async (tc) => {
+    const toolResults: ContentBlock[] = await Promise.all(
+      response.toolCalls.map(async (tc): Promise<ContentBlock> => {
         let content: string;
         let isError = false;
         try {
           content = await executeToolWithTimeout(tc.name, tc.input);
-        } catch (e: any) {
-          content = e?.message ?? String(e);
+        } catch (e: unknown) {
+          content = e instanceof Error ? e.message : String(e);
           isError = true;
         }
-        return {
-          type: "tool_result",
-          tool_use_id: tc.id,
-          content,
-          ...(isError ? { is_error: true } : {}),
-        };
+        return { type: "tool_result", tool_use_id: tc.id, content, ...(isError ? { is_error: true } : {}) };
       })
     );
     history.push({ role: "user", content: toolResults });
