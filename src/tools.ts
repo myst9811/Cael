@@ -65,47 +65,52 @@ function parseCommandArgs(cmd: string): string[] {
   return args;
 }
 
-const codeTools: ToolDefinition[] = [
-  {
-    name: "read_file",
-    description: "Read a file's contents from disk",
-    input_schema: {
-      type: "object",
-      properties: { path: { type: "string", description: "Path to the file" } },
-      required: ["path"],
-    },
+export const MAX_TOOL_RESULT_CHARS = 10_000;
+
+const readFileTool: ToolDefinition = {
+  name: "read_file",
+  description: "Read a file's contents from disk",
+  input_schema: {
+    type: "object",
+    properties: { path: { type: "string", description: "Path to the file" } },
+    required: ["path"],
   },
-  {
-    name: "write_file",
-    description: "Write content to a file on disk",
-    input_schema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Path to write to" },
-        content: { type: "string", description: "Content to write" },
-      },
-      required: ["path", "content"],
+};
+
+const writeFileTool: ToolDefinition = {
+  name: "write_file",
+  description: "Write content to a file on disk",
+  input_schema: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "Path to write to" },
+      content: { type: "string", description: "Content to write" },
     },
+    required: ["path", "content"],
   },
-  {
-    name: "run_shell",
-    description: "Execute a shell command and return stdout. Commands run directly (no shell), so pipes and redirects are not supported — use individual commands.",
-    input_schema: {
-      type: "object",
-      properties: { command: { type: "string", description: "Command to run (e.g. 'git status' or 'ls -la')" } },
-      required: ["command"],
-    },
+};
+
+const runShellTool: ToolDefinition = {
+  name: "run_shell",
+  description: "Execute a shell command and return stdout. Commands run directly (no shell), so pipes and redirects are not supported — use individual commands.",
+  input_schema: {
+    type: "object",
+    properties: { command: { type: "string", description: "Command to run (e.g. 'git status' or 'ls -la')" } },
+    required: ["command"],
   },
-  {
-    name: "list_dir",
-    description: "List files and folders in a directory",
-    input_schema: {
-      type: "object",
-      properties: { path: { type: "string", description: "Directory path (defaults to .)" } },
-      required: [],
-    },
+};
+
+const listDirTool: ToolDefinition = {
+  name: "list_dir",
+  description: "List files and folders in a directory",
+  input_schema: {
+    type: "object",
+    properties: { path: { type: "string", description: "Directory path (defaults to .)" } },
+    required: [],
   },
-];
+};
+
+const codeTools: ToolDefinition[] = [readFileTool, writeFileTool, runShellTool, listDirTool];
 
 export const collectorTools: ToolDefinition[] = [
   {
@@ -151,6 +156,14 @@ export const collectorTools: ToolDefinition[] = [
 ];
 
 export const tools: ToolDefinition[] = [...codeTools, ...collectorTools];
+
+export const watchTools: ToolDefinition[] = [
+  readFileTool,
+  runShellTool,
+  listDirTool,
+  ...collectorTools,
+  // write_file intentionally excluded
+];
 
 const TOOL_TIMEOUT_MS = 10_000;
 const MAX_READ_BYTES = 1_000_000; // 1 MB
