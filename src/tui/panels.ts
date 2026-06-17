@@ -32,12 +32,13 @@ export function renderSystemPanel(data: SystemMetrics | CollectorError): string[
 }
 
 export function renderDockerPanel(data: DockerStatus | CollectorError): string[] {
-  if ("error" in data) {
+  // CollectorError has no 'available' field; DockerStatus always does
+  if (!("available" in data)) {
     return ["DOCKER", `  ⚠ ${(data as CollectorError).error.slice(0, 28)}`];
   }
   const d = data as DockerStatus;
   if (!d.available) {
-    return ["DOCKER", "  ○ daemon unavailable"];
+    return ["DOCKER", "  ○ daemon not running"];
   }
   if (d.containers.length === 0) {
     return ["DOCKER", "  no containers"];

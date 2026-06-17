@@ -76,7 +76,7 @@ test("renderDockerPanel: shows UP for running container", () => {
 
 test("renderDockerPanel: daemon unavailable", () => {
   const out = joined(renderDockerPanel({ available: false, containers: [] }));
-  expect(out).toContain("unavailable");
+  expect(out).toContain("not running");
 });
 
 test("renderDockerPanel: empty container list", () => {
