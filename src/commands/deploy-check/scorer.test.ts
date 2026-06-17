@@ -95,9 +95,10 @@ test("container in restarting loop: hard block NO-GO", () => {
   expect(r.go_no_go).toBe("NO-GO");
 });
 
-test("docker unavailable: 20 pts (cannot check, assume ok)", () => {
+test("docker unavailable: 10 pts warning (blind spot, not a pass)", () => {
   const r = calculateDeployScore({ ...perfect, docker: { available: false, containers: [] } });
-  expect(r.items.docker.score).toBe(20);
+  expect(r.items.docker.score).toBe(10);
+  expect(r.items.docker.warning).toBe(true);
 });
 
 test("container exited cleanly (exit 0): partial pts", () => {

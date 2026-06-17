@@ -72,7 +72,7 @@ function scoreDisk(pct: number): CheckItem {
 
 function scoreDocker(docker: DeployInput["docker"]): CheckItem {
   if (!docker.available) {
-    return { score: 20, max: 20, label: "unavailable", details: "cannot check" };
+    return { score: 10, max: 20, label: "unavailable", details: "cannot verify", warning: true };
   }
 
   const restarting = docker.containers.filter(c => c.status === "restarting");
