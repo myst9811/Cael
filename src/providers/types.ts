@@ -21,8 +21,12 @@ export interface ProviderResponse {
   stopReason: "end_turn" | "tool_use";
 }
 
+export interface ChatOptions {
+  system?: string;
+}
+
 export interface LLMProvider {
   name: string;
-  chat(messages: Message[], tools: ToolDefinition[]): Promise<ProviderResponse>;
-  stream?(messages: Message[], tools: ToolDefinition[], onChunk: (text: string) => void): Promise<ProviderResponse>;
+  chat(messages: Message[], tools: ToolDefinition[], options?: ChatOptions): Promise<ProviderResponse>;
+  stream?(messages: Message[], tools: ToolDefinition[], onChunk: (text: string) => void, options?: ChatOptions): Promise<ProviderResponse>;
 }

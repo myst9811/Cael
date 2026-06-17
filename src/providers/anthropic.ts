@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { LLMProvider, Message, ToolDefinition, ProviderResponse } from "./types";
+import type { LLMProvider, Message, ToolDefinition, ProviderResponse, ChatOptions } from "./types";
 
 export class AnthropicProvider implements LLMProvider {
   name = "anthropic";
@@ -10,10 +10,11 @@ export class AnthropicProvider implements LLMProvider {
     this.model = model;
   }
 
-  async stream(messages: Message[], tools: ToolDefinition[], onChunk: (t: string) => void): Promise<ProviderResponse> {
+  async stream(messages: Message[], tools: ToolDefinition[], onChunk: (t: string) => void, options?: ChatOptions): Promise<ProviderResponse> {
     const stream = await this.client.messages.stream({
       model: this.model,
       max_tokens: 4096,
+      ...(options?.system ? { system: options.system } : {}),
       tools: tools as any,
       messages,
     });
@@ -37,7 +38,7 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  async chat(messages: Message[], tools: ToolDefinition[]): Promise<ProviderResponse> {
-    return this.stream(messages, tools, () => {});
+  async chat(messages: Message[], tools: ToolDefinition[], options?: ChatOptions): Promise<ProviderResponse> {
+    return this.stream(messages, tools, () => {}, options);
   }
 }
