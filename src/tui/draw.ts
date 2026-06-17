@@ -9,11 +9,10 @@ export const A = {
   yellow:        "\x1b[33m",
   red:           "\x1b[31m",
   brightGreen:   "\x1b[92m",
-  clear:         "\x1b[2J\x1b[H",
   hideCursor:    "\x1b[?25l",
   showCursor:    "\x1b[?25h",
-  altEnter:      "\x1b[?1049h",  // switch to alternate screen (clean slate)
-  altExit:       "\x1b[?1049l",  // restore normal screen + scrollback
+  saveCursor:    "\x1b7",   // save cursor position (DEC private, widely supported)
+  restoreCursor: "\x1b8",   // restore cursor to saved position
 } as const;
 
 // ── Box chars ────────────────────────────────────────────────────────────────

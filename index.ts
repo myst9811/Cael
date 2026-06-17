@@ -47,9 +47,8 @@ async function repl(providerSpec: string): Promise<void> {
 }
 
 if (import.meta.main) {
+  printLogo();
   const args = process.argv.slice(2);
-  // Watch manages its own alternate screen — skip the logo splash there
-  if (!args.includes("watch")) printLogo();
   try {
     const { provider: providerSpec, subcommand, prompt } = parseArgs(args);
     const provider = createProvider(providerSpec);
