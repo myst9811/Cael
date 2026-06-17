@@ -78,7 +78,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
-    process.stdout.write(A.restoreCursor + frame);
+    process.stdout.write(A.restoreCursor + frame + A.clearBelow);
   };
 
   // ── Refresh ───────────────────────────────────────────────────────────────
@@ -128,7 +128,22 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
         draw();
       }
     } catch (err: unknown) {
-      state = { ...state, aiResponse: `Error: ${err instanceof Error ? err.message : String(err)}` };
+      const raw = err instanceof Error ? err.message : String(err);
+      let friendly = raw;
+      // Anthropic SDK may surface the raw response body as err.message.
+      // Try to extract a human-readable string from the JSON payload.
+      try {
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart >= 0) {
+          const parsed = JSON.parse(raw.slice(jsonStart)) as { error?: { type?: string; message?: string } };
+          if (parsed.error?.type === "overloaded_error") {
+            friendly = "API overloaded — try again in a moment";
+          } else if (typeof parsed.error?.message === "string") {
+            friendly = parsed.error.message;
+          }
+        }
+      } catch { /* not JSON — use raw */ }
+      state = { ...state, aiResponse: `Error: ${friendly}` };
       draw();
     } finally {
       querying = false;

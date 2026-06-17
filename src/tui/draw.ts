@@ -13,6 +13,7 @@ export const A = {
   showCursor:    "\x1b[?25h",
   saveCursor:    "\x1b7",   // save cursor position (DEC private, widely supported)
   restoreCursor: "\x1b8",   // restore cursor to saved position
+  clearBelow:    "\x1b[0J", // erase from cursor to end of screen
 } as const;
 
 // ── Box chars ────────────────────────────────────────────────────────────────
