@@ -1,5 +1,6 @@
-import { readdirSync } from "fs";
-import { resolve } from "path";
+import { readdirSync, realpathSync } from "fs";
+import { realpath } from "fs/promises";
+import { resolve, dirname, basename } from "path";
 import type { ToolDefinition } from "./providers/types";
 import { getSystemMetrics } from "./collectors/system";
 import { getDockerStatus, getDockerLogs } from "./collectors/docker";
@@ -9,14 +10,33 @@ import { getProcessList } from "./collectors/process";
 // ── Path safety ───────────────────────────────────────────────────────────────
 // Restrict all file/dir operations to the process working directory to prevent
 // the LLM (or a prompt-injected payload) from reading ~/.ssh/id_rsa, etc.
-const CWD = process.cwd();
+//
+// CWD is realpath'd at startup so that a symlinked working directory doesn't
+// cause false mismatches when comparing against realpath'd input paths.
+const CWD = (() => { try { return realpathSync(process.cwd()); } catch { return process.cwd(); } })();
 
-function assertWithinCwd(inputPath: string): string {
-  const resolved = resolve(inputPath);
-  if (resolved !== CWD && !resolved.startsWith(CWD + "/")) {
+// Uses realpath() (not resolve()) so symlinks inside CWD that point outside
+// the boundary are followed to their true target before the check is applied.
+// For paths that don't exist yet (e.g. write_file targets), we realpath the
+// parent directory — a non-existent file cannot itself be a symlink.
+async function assertWithinCwd(inputPath: string): Promise<string> {
+  const lexical = resolve(inputPath);
+  let real: string;
+  try {
+    real = await realpath(lexical);
+  } catch {
+    // File doesn't exist yet — realpath parent and reconstruct.
+    try {
+      const parentReal = await realpath(dirname(lexical));
+      real = parentReal + "/" + basename(lexical);
+    } catch {
+      throw new Error(`Access denied: parent directory does not exist`);
+    }
+  }
+  if (real !== CWD && !real.startsWith(CWD + "/")) {
     throw new Error(`Access denied: path must be within the working directory`);
   }
-  return resolved;
+  return real;
 }
 
 // ── Shell-injection prevention ────────────────────────────────────────────────
@@ -159,7 +179,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
   switch (name) {
     case "read_file": {
       if (!input.path) return "Error: path is required";
-      const safePath = assertWithinCwd(String(input.path));
+      const safePath = await assertWithinCwd(String(input.path));
       const file = Bun.file(safePath);
       if (file.size > MAX_READ_BYTES) {
         return `Error: file too large (${(file.size / 1024).toFixed(0)} KB); max is 1 MB`;
@@ -169,7 +189,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
 
     case "write_file": {
       if (!input.path || !input.content) return "Error: path and content are required";
-      const safePath = assertWithinCwd(String(input.path));
+      const safePath = await assertWithinCwd(String(input.path));
       await Bun.write(safePath, String(input.content));
       return `Written to ${input.path}`;
     }
@@ -195,7 +215,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
 
     case "list_dir": {
       const dirPath = input.path ? String(input.path) : ".";
-      const safePath = assertWithinCwd(dirPath);
+      const safePath = await assertWithinCwd(dirPath);
       return readdirSync(safePath).join("\n");
     }
 
