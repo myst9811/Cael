@@ -68,3 +68,51 @@ test("runAgentLoop passes tool results back into the conversation", async () => 
   expect(lastMessage.role).toBe("user");
   expect(JSON.stringify(lastMessage.content)).toContain("t1");
 });
+
+test("runAgentLoop stops at maxIterations and appends warning", async () => {
+  let calls = 0;
+  const mockProvider: LLMProvider = {
+    name: "mock",
+    chat: async () => {
+      calls++;
+      return {
+        text: "",
+        toolCalls: [{ id: `t${calls}`, name: "list_dir", input: { path: "." } }],
+        stopReason: "tool_use" as const,
+      };
+    },
+  };
+
+  const result = await runAgentLoop(
+    mockProvider,
+    [{ role: "user", content: "go" }],
+    { maxIterations: 3 }
+  );
+
+  expect(calls).toBe(3);
+  expect(result).toContain("reached maximum iterations");
+});
+
+test("runAgentLoop catches tool execution errors and sends is_error: true", async () => {
+  const seenToolResults: any[] = [];
+  const mockProvider: LLMProvider = {
+    name: "mock",
+    chat: async (messages) => {
+      if (messages.length === 1) {
+        return {
+          text: "",
+          toolCalls: [{ id: "t1", name: "nonexistent_tool_xyz", input: {} }],
+          stopReason: "tool_use" as const,
+        };
+      }
+      const last = messages[messages.length - 1];
+      seenToolResults.push(...last.content);
+      return { text: "done", toolCalls: [], stopReason: "end_turn" as const };
+    },
+  };
+
+  const result = await runAgentLoop(mockProvider, [{ role: "user", content: "test" }]);
+  expect(result).toBe("done");
+  expect(seenToolResults[0].is_error).toBe(true);
+  expect(seenToolResults[0].content).toBeTruthy();
+});
