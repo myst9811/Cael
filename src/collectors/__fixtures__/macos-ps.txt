@@ -1,0 +1,6 @@
+USER               PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
+shannensaikia    39899  12.3  2.3 508819248 387120 s060  S+    4:08PM   4:13.04 claude
+root             41723  11.2  0.1 435357392  12400   ??  Rs    5:08PM   0:00.15 /System/Library/PrivateFrameworks/Ecosystem.framework/Support/ecosystemd
+_trustd            405   8.2  0.1 435359584  10736   ??  Ss   22Apr26  82:43.46 /usr/libexec/trustd
+_windowserver    34504   6.9  0.5 436566192  78000   ??  Rs    1:10PM  33:21.12 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer -daemon
+shannensaikia    34651   4.4  0.6 436206864  96896   ??  S     1:10PM   2:15.69 /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
