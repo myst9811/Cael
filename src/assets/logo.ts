@@ -125,5 +125,9 @@ export function printLogo(): void {
   process.stdout.write(LOGO + "\n");
 }
 
+// Number of terminal rows consumed by printLogo() — used by watch to
+// compute how many rows remain for the dashboard below the logo.
+export const LOGO_ROWS = (LOGO + "\n").split("\n").length - 1;
+
 // Allow `bun src/assets/logo.ts` to preview the banner directly.
 if (import.meta.url === `file://${process.argv[1]}`) printLogo();

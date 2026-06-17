@@ -6,7 +6,7 @@ import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
 import type { LLMProvider } from "../providers/types";
 import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
-import { printLogo } from "../assets/logo";
+import { printLogo, LOGO_ROWS } from "../assets/logo";
 
 const REFRESH_MS = 5000;
 
@@ -50,13 +50,10 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const onResize = () => { if (!querying) draw(); };
 
-  // Tracks whether the alt-screen is active; draw() is a no-op until then.
-  let altScreenActive = false;
-
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
     process.stdout.removeListener("resize", onResize);
-    process.stdout.write(A.altExit + A.showCursor);
+    process.stdout.write(A.showCursor);
     process.exit(code);
   };
 
@@ -64,10 +61,11 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   process.on("SIGTERM", () => cleanup(0));
 
   // ── Draw ─────────────────────────────────────────────────────────────────
+  // Restores cursor to the saved position (right below the logo) and redraws
+  // the dashboard frame in-place, filling all rows beneath the logo.
   const draw = () => {
-    if (!altScreenActive) return;
     const cols = process.stdout.columns || 80;
-    const rows = process.stdout.rows || 24;
+    const rows = Math.max(3, (process.stdout.rows || 24) - LOGO_ROWS);
     const frame = buildFrame({
       cols,
       rows,
@@ -81,7 +79,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
-    process.stdout.write(A.cursorHome + frame + A.clearBelow);
+    process.stdout.write(A.restoreCursor + frame + A.clearBelow);
   };
 
   // ── Refresh ───────────────────────────────────────────────────────────────
@@ -96,15 +94,12 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     if (!querying && state.mode === "IDLE") draw();
   };
 
-  // Print logo in the normal terminal buffer while the first data collection
-  // runs (~0.5 s). After collection, enter the alt-screen so the full terminal
-  // is available for the TUI without the logo eating vertical space.
+  // Print the logo, save cursor position immediately below it, then collect
+  // the first data snapshot. The dashboard renders below the logo on every
+  // subsequent draw() by restoring to the saved cursor position.
   printLogo();
+  process.stdout.write(A.hideCursor + A.saveCursor);
   await doRefresh();
-
-  process.stdout.write(A.altEnter + A.hideCursor);
-  altScreenActive = true;
-  draw();
 
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
   process.stdout.on("resize", onResize);
