@@ -10,15 +10,15 @@ export function parsePsOutput(output: string): ProcessEntry[] {
       const fields = line.trim().split(/\s+/);
       if (fields.length < 11) return [];
 
-      const pid = parseInt(fields[1]);
+      const pid = parseInt(fields[1] ?? "");
       if (isNaN(pid)) return [];
 
-      const user = fields[0];
-      const cpu_percent = parseFloat(fields[2]);
-      const rss_kb = parseInt(fields[5]);
+      const user = fields[0] ?? "";
+      const cpu_percent = parseFloat(fields[2] ?? "0");
+      const rss_kb = parseInt(fields[5] ?? "0");
       const mem_mb = Math.round((rss_kb / 1024) * 10) / 10;
       const command = fields.slice(10).join(" ");
-      const name = command.split(" ")[0].split("/").pop() ?? command;
+      const name = (command.split(" ")[0] ?? command).split("/").pop() ?? command;
 
       return [{ pid, user, cpu_percent, mem_mb, name, command }];
     });

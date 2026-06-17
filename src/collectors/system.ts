@@ -6,11 +6,11 @@ export function parseMacOSMemory(vmstatOutput: string): { used_gb: number; total
   if (!vmstatOutput.trim()) return { used_gb: 0, total_gb: 0, percent: 0 };
 
   const pageSizeMatch = vmstatOutput.match(/page size of (\d+) bytes/);
-  const pageSize = pageSizeMatch ? parseInt(pageSizeMatch[1]) : 4096;
+  const pageSize = pageSizeMatch ? parseInt(pageSizeMatch[1] ?? "4096") : 4096;
 
   const extract = (label: string): number => {
     const match = vmstatOutput.match(new RegExp(`${label}:\\s+(\\d+)\\.`));
-    return match ? parseInt(match[1]) : 0;
+    return match ? parseInt(match[1] ?? "0") : 0;
   };
 
   const free = extract("Pages free");
@@ -35,7 +35,7 @@ export function parseMacOSMemory(vmstatOutput: string): { used_gb: number; total
 export function parseLinuxMemory(meminfoOutput: string): { used_gb: number; total_gb: number; percent: number } {
   const extract = (key: string): number => {
     const match = meminfoOutput.match(new RegExp(`^${key}:\\s+(\\d+)`, "m"));
-    return match ? parseInt(match[1]) : 0;
+    return match ? parseInt(match[1] ?? "0") : 0;
   };
 
   const totalKb = extract("MemTotal");
@@ -54,8 +54,8 @@ export function parseLinuxMemory(meminfoOutput: string): { used_gb: number; tota
 export function parseMacOSCpu(topOutput: string): number {
   const matches = [...topOutput.matchAll(/CPU usage:\s+([\d.]+)%\s+user,\s+([\d.]+)%\s+sys,\s+([\d.]+)%\s+idle/g)];
   if (matches.length === 0) return 0;
-  const last = matches[matches.length - 1];
-  const idle = parseFloat(last[3]);
+  const last = matches[matches.length - 1]!;
+  const idle = parseFloat(last[3] ?? "0");
   return Math.round((100 - idle) * 10) / 10;
 }
 
@@ -63,7 +63,7 @@ export function parseLinuxCpu(stat1: string, stat2: string): number {
   const parse = (s: string): { idle: number; total: number } => {
     const match = s.match(/^cpu\s+([\d ]+)/m);
     if (!match) return { idle: 0, total: 0 };
-    const fields = match[1].trim().split(/\s+/).map(Number);
+    const fields = (match[1] ?? "").trim().split(/\s+/).map(Number);
     const total = fields.reduce((a, b) => a + b, 0);
     const idle = (fields[3] ?? 0) + (fields[4] ?? 0);
     return { idle, total };
@@ -83,8 +83,8 @@ export function parseDisk(dfOutput: string): { used_gb: number; total_gb: number
   if (!dataLine) return { used_gb: 0, total_gb: 0, percent: 0 };
 
   const fields = dataLine.trim().split(/\s+/);
-  const totalKb = parseInt(fields[1]) || 0;
-  const usedKb = parseInt(fields[2]) || 0;
+  const totalKb = parseInt(fields[1] ?? "0") || 0;
+  const usedKb = parseInt(fields[2] ?? "0") || 0;
   const percentStr = fields[4] ?? "0%";
   const percent = parseInt(percentStr) || 0;
   const GB = 1024 * 1024;
@@ -137,6 +137,6 @@ export async function getSystemMetrics(): Promise<SystemMetrics> {
     disk_used_gb: disk.used_gb,
     disk_total_gb: disk.total_gb,
     disk_percent: disk.percent,
-    load_avg: [la[0], la[1], la[2]],
+    load_avg: [la[0] ?? 0, la[1] ?? 0, la[2] ?? 0],
   };
 }
