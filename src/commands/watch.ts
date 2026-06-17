@@ -6,6 +6,7 @@ import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
 import type { LLMProvider } from "../providers/types";
 import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
+import { printLogo } from "../assets/logo";
 
 const REFRESH_MS = 5000;
 
@@ -49,6 +50,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const onResize = () => { if (!querying) draw(); };
 
+  // Tracks whether the alt-screen is active; draw() is a no-op until then.
+  let altScreenActive = false;
+
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
     process.stdout.removeListener("resize", onResize);
@@ -59,11 +63,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   process.on("SIGINT", () => cleanup(0));
   process.on("SIGTERM", () => cleanup(0));
 
-  // Enter full-screen alternate buffer and hide cursor.
-  process.stdout.write(A.altEnter + A.hideCursor);
-
   // ── Draw ─────────────────────────────────────────────────────────────────
   const draw = () => {
+    if (!altScreenActive) return;
     const cols = process.stdout.columns || 80;
     const rows = process.stdout.rows || 24;
     const frame = buildFrame({
@@ -94,7 +96,16 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     if (!querying && state.mode === "IDLE") draw();
   };
 
+  // Print logo in the normal terminal buffer while the first data collection
+  // runs (~0.5 s). After collection, enter the alt-screen so the full terminal
+  // is available for the TUI without the logo eating vertical space.
+  printLogo();
   await doRefresh();
+
+  process.stdout.write(A.altEnter + A.hideCursor);
+  altScreenActive = true;
+  draw();
+
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
   process.stdout.on("resize", onResize);
 

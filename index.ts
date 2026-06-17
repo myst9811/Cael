@@ -51,7 +51,8 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   try {
     const { provider: providerSpec, subcommand, prompt } = parseArgs(args);
-    printLogo();
+    // watch prints the logo itself (inside runWatch, before entering alt-screen).
+    if (subcommand !== "watch") printLogo();
     const provider = createProvider(providerSpec);
 
     if (subcommand === "ask") {

@@ -198,12 +198,21 @@ export function buildFrame(opts: FrameOptions): string {
     const cursor = "\x1b[7m \x1b[0m";
     frame += `${B.v}${pad(`  ${A.brightGreen}>${A.reset} ${opts.queryInput}${cursor}`, innerW)}${B.v}\n`;
   } else {
-    // SHOWING_RESULT — wrap response into lines, auto-scroll so latest text is visible.
+    // SHOWING_RESULT — show the submitted question, then the streamed response.
+    // Auto-scroll so the latest text is always visible.
+    const hasQuery = opts.queryInput.length > 0;
+    const queryHeaderRows = hasQuery ? 2 : 0; // "  > question" + blank separator
+    const responseContentRows = Math.max(1, contentRows - queryHeaderRows);
+
+    if (hasQuery) {
+      frame += `${B.v}${pad(`  ${A.dim}> ${opts.queryInput}${A.reset}`, innerW)}${B.v}\n`;
+      frame += `${B.v}${pad("", innerW)}${B.v}\n`;
+    }
+
     const responseLines = wrapWords(opts.aiResponse, innerW - 4);
-    // Show at most contentRows lines; once response overflows, scroll to bottom.
-    const visible = responseLines.length <= contentRows
-      ? [...responseLines, ...Array<string>(contentRows - responseLines.length).fill("")]
-      : responseLines.slice(-contentRows);
+    const visible = responseLines.length <= responseContentRows
+      ? [...responseLines, ...Array<string>(responseContentRows - responseLines.length).fill("")]
+      : responseLines.slice(-responseContentRows);
     for (const rl of visible) {
       frame += `${B.v}${pad(`  ${rl}`, innerW)}${B.v}\n`;
     }
