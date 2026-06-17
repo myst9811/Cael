@@ -1,4 +1,3 @@
-import { writeFileSync } from "fs";
 import { resolve } from "path";
 import { runAgentLoop } from "../../agent";
 import { parseTimeSince } from "./time-parser";
@@ -63,7 +62,7 @@ export async function runPostmortem(rawArgs: string, provider: LLMProvider): Pro
     if (resolvedOutput !== cwd && !resolvedOutput.startsWith(cwd + "/")) {
       throw new Error(`Output path must be within the working directory`);
     }
-    writeFileSync(resolvedOutput, output, "utf-8");
+    await Bun.write(resolvedOutput, output);
     console.log(postmortem);
     console.log(`\n---\nSaved to ${outputFile}`);
   } else {
