@@ -4,6 +4,7 @@ import { runAgent, runAgentLoop } from "./src/agent";
 import { runAsk } from "./src/commands/ask";
 import { runDeployCheck } from "./src/commands/deploy-check";
 import { runPostmortem } from "./src/commands/postmortem";
+import { printLogo } from "./src/assets/logo";
 
 const SUBCOMMANDS = ["ask", "watch", "deploy-check", "postmortem"] as const;
 type Subcommand = typeof SUBCOMMANDS[number];
@@ -45,6 +46,7 @@ async function repl(providerSpec: string): Promise<void> {
 }
 
 if (import.meta.main) {
+  printLogo();
   const args = process.argv.slice(2);
   try {
     const { provider: providerSpec, subcommand, prompt } = parseArgs(args);
