@@ -14,8 +14,10 @@ export function parsePsOutput(output: string): ProcessEntry[] {
       if (isNaN(pid)) return [];
 
       const user = fields[0] ?? "";
-      const cpu_percent = parseFloat(fields[2] ?? "0");
-      const rss_kb = parseInt(fields[5] ?? "0");
+      const cpuRaw = parseFloat(fields[2] ?? "0");
+      const cpu_percent = isNaN(cpuRaw) ? 0 : cpuRaw;
+      const rssRaw = parseInt(fields[5] ?? "0");
+      const rss_kb = isNaN(rssRaw) ? 0 : rssRaw;
       const mem_mb = Math.round((rss_kb / 1024) * 10) / 10;
       const command = fields.slice(10).join(" ");
       const name = (command.split(" ")[0] ?? command).split("/").pop() ?? command;
