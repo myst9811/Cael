@@ -13,14 +13,18 @@ export class OpenAIProvider implements LLMProvider {
   async stream(messages: Message[], tools: ToolDefinition[], onChunk: (t: string) => void): Promise<ProviderResponse> {
     // Convert tool schema: Anthropic uses input_schema, OpenAI uses parameters
     const oaiTools = tools.map(t => ({
-      type: "function" as const,
-      function: { name: t.name, description: t.description, parameters: t.input_schema },
+    type: "function" as const,
+    function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema as Record<string, unknown>,
+    },
     }));
 
     const stream = await this.client.chat.completions.create({
       model: this.model,
       tools: oaiTools,
-      messages,
+      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       stream: true,
     });
 
