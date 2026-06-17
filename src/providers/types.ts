@@ -1,18 +1,27 @@
+export type TextBlock       = { type: "text";        text: string };
+export type ToolUseBlock    = { type: "tool_use";    id: string; name: string; input: Record<string, unknown> };
+export type ToolResultBlock = { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
+export type ContentBlock    = TextBlock | ToolUseBlock | ToolResultBlock;
+
 export interface Message {
   role: "user" | "assistant";
-  content: any;
+  content: string | ContentBlock[];
 }
 
 export interface ToolDefinition {
   name: string;
   description: string;
-  input_schema: object;
+  input_schema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
 }
 
 export interface ToolCall {
   id: string;
   name: string;
-  input: Record<string, any>;
+  input: Record<string, unknown>;
 }
 
 export interface ProviderResponse {

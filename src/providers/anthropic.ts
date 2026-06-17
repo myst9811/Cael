@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages";
 import type { LLMProvider, Message, ToolDefinition, ProviderResponse, ChatOptions } from "./types";
 
 export class AnthropicProvider implements LLMProvider {
@@ -15,7 +16,7 @@ export class AnthropicProvider implements LLMProvider {
       model: this.model,
       max_tokens: 4096,
       ...(options?.system ? { system: options.system } : {}),
-      tools: tools as any,
+      tools: tools as unknown as AnthropicTool[],
       messages,
     });
 
