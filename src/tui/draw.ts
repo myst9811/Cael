@@ -1,0 +1,184 @@
+import type { WatchMode } from "./state";
+
+// ── ANSI codes ───────────────────────────────────────────────────────────────
+export const A = {
+  reset:        "\x1b[0m",
+  bold:         "\x1b[1m",
+  dim:          "\x1b[2m",
+  green:        "\x1b[32m",
+  yellow:       "\x1b[33m",
+  red:          "\x1b[31m",
+  brightGreen:  "\x1b[92m",
+  clear:        "\x1b[2J\x1b[H",
+  hideCursor:   "\x1b[?25l",
+  showCursor:   "\x1b[?25h",
+} as const;
+
+// ── Box chars ────────────────────────────────────────────────────────────────
+const B = {
+  tl: "╔", tr: "╗", bl: "╚", br: "╝",
+  h: "═", v: "║",
+  lj: "╠", rj: "╣",
+  tj: "╦", bj: "╩",
+} as const;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+export function visLen(s: string): number {
+  return s.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
+
+function pad(s: string, width: number): string {
+  const vl = visLen(s);
+  if (vl >= width) {
+    // Trim visible content while preserving trailing reset
+    let count = 0;
+    let i = 0;
+    while (i < s.length && count < width) {
+      if (s[i] === "\x1b") {
+        while (i < s.length && s[i] !== "m") i++;
+        i++;
+      } else {
+        count++;
+        i++;
+      }
+    }
+    return s.slice(0, i) + A.reset;
+  }
+  return s + " ".repeat(width - vl);
+}
+
+function hline(width: number, char = B.h): string {
+  return char.repeat(width);
+}
+
+// ── Alert generation ─────────────────────────────────────────────────────────
+
+import type { SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
+
+export function generateAlerts(
+  system: SystemMetrics | CollectorError,
+  docker: DockerStatus | CollectorError,
+): string[] {
+  const alerts: string[] = [];
+  if (!("error" in system)) {
+    const m = system as SystemMetrics;
+    if (m.disk_percent > 95) alerts.push(`${"\x1b[31m"}✕ DISK CRITICAL ${m.disk_percent.toFixed(0)}%${A.reset}`);
+    else if (m.disk_percent > 85) alerts.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
+    if (m.cpu_percent > 90) alerts.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
+    if (m.mem_percent > 90) alerts.push(`${"\x1b[33m"}⚠ Memory ${m.mem_percent.toFixed(0)}% used${A.reset}`);
+  }
+  if (!("error" in docker)) {
+    const d = docker as DockerStatus;
+    if (d.available) {
+      for (const c of d.containers) {
+        if (c.status === "restarting") {
+          alerts.push(`${"\x1b[33m"}↻ ${c.name} is restarting${A.reset}`);
+        } else if (c.status === "exited" && c.exit_code !== 0) {
+          alerts.push(`${"\x1b[31m"}✕ ${c.name} exited (code ${c.exit_code ?? "?"})${A.reset}`);
+        }
+      }
+    }
+  }
+  return alerts;
+}
+
+// ── Frame builder ─────────────────────────────────────────────────────────────
+
+export interface FrameOptions {
+  cols: number;
+  systemLines: string[];
+  dockerLines: string[];
+  gitLines: string[];
+  alerts: string[];
+  mode: WatchMode;
+  queryInput: string;
+  aiResponse: string;
+  timestamp: string;
+}
+
+function wrapWords(text: string, width: number): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    if (cur && cur.length + 1 + w.length > width) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = cur ? `${cur} ${w}` : w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
+export function buildFrame(opts: FrameOptions): string {
+  const { cols } = opts;
+  const innerW = Math.max(cols - 2, 40);
+
+  // Panel widths: split inner width across 3 panels and 2 dividers
+  const available = innerW - 2; // subtract 2 inner dividers
+  const w1 = Math.floor(available / 3);
+  const w2 = Math.floor(available / 3);
+  const w3 = available - w1 - w2;
+
+  const PANEL_ROWS = 5; // fixed panel content rows
+
+  let frame = "";
+
+  // ── Top border + header ───────────────────────────────────────────────────
+  const title = `${A.bold}${A.brightGreen} cael watch ${A.reset}`;
+  const ts = `${A.dim}${opts.timestamp}${A.reset}`;
+  const hint = `${A.dim}[/] ask  [q] quit${A.reset}`;
+  const headerContent = `${title}  ${ts}  ${hint}`;
+  frame += `${B.tl}${hline(innerW)}${B.tr}\n`;
+  frame += `${B.v}${pad(headerContent, innerW)}${B.v}\n`;
+
+  // ── Panel section ─────────────────────────────────────────────────────────
+  frame += `${B.lj}${hline(w1)}${B.tj}${hline(w2)}${B.tj}${hline(w3)}${B.rj}\n`;
+
+  const sys = opts.systemLines;
+  const doc = opts.dockerLines;
+  const git = opts.gitLines;
+
+  for (let i = 0; i < PANEL_ROWS; i++) {
+    const l = i < sys.length ? sys[i] : "";
+    const m = i < doc.length ? doc[i] : "";
+    const r = i < git.length ? git[i] : "";
+    frame += `${B.v}${pad(l, w1)}${B.v}${pad(m, w2)}${B.v}${pad(r, w3)}${B.v}\n`;
+  }
+
+  // ── Alert bar ─────────────────────────────────────────────────────────────
+  frame += `${B.lj}${hline(w1)}${B.bj}${hline(w2)}${B.bj}${hline(w3)}${B.rj}\n`;
+
+  if (opts.alerts.length === 0) {
+    frame += `${B.v}${pad(`  ${A.dim}system nominal${A.reset}`, innerW)}${B.v}\n`;
+  } else {
+    for (const alert of opts.alerts.slice(0, 2)) {
+      frame += `${B.v}${pad(`  ${alert}`, innerW)}${B.v}\n`;
+    }
+  }
+
+  // ── Status / query / AI response ─────────────────────────────────────────
+  frame += `${B.lj}${hline(innerW)}${B.rj}\n`;
+
+  if (opts.mode === "IDLE") {
+    frame += `${B.v}${pad(`  ${A.dim}press / to ask Cael a question${A.reset}`, innerW)}${B.v}\n`;
+  } else if (opts.mode === "QUERYING") {
+    const cursor = "\x1b[7m \x1b[0m"; // reversed-video block cursor
+    frame += `${B.v}${pad(`  ${A.brightGreen}>${A.reset} ${opts.queryInput}${cursor}`, innerW)}${B.v}\n`;
+  } else {
+    // SHOWING_RESULT — wrap AI response across up to 4 lines
+    const responseLines = wrapWords(opts.aiResponse, innerW - 4);
+    for (const rl of responseLines.slice(0, 4)) {
+      frame += `${B.v}${pad(`  ${rl}`, innerW)}${B.v}\n`;
+    }
+    frame += `${B.v}${pad(`  ${A.dim}[any key to dismiss]${A.reset}`, innerW)}${B.v}\n`;
+  }
+
+  // ── Bottom border ─────────────────────────────────────────────────────────
+  frame += `${B.bl}${hline(innerW)}${B.br}\n`;
+
+  return frame;
+}
