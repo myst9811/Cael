@@ -104,7 +104,7 @@ function wrapWords(text: string, width: number): string[] {
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
-    if (cur && cur.length + 1 + w.length > width) {
+    if (cur && visLen(cur) + 1 + visLen(w) > width) {
       lines.push(cur);
       cur = w;
     } else {

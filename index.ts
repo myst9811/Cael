@@ -18,8 +18,9 @@ export function parseArgs(args: string[]): { provider: string; subcommand?: Subc
 
   const remaining = args.filter((_, i) => i !== providerIdx && i !== providerIdx + 1);
 
-  if (remaining.length > 0 && (SUBCOMMANDS as readonly string[]).includes(remaining[0])) {
-    const subcommand = remaining[0] as Subcommand;
+  const first = remaining[0];
+  if (first && (SUBCOMMANDS as readonly string[]).includes(first)) {
+    const subcommand = first as Subcommand;
     const prompt = remaining.slice(1).join(" ") || undefined;
     return { provider, subcommand, prompt };
   }
@@ -70,8 +71,8 @@ if (import.meta.main) {
     } else {
       repl(providerSpec).catch((e) => { console.error(e.message); process.exit(1); });
     }
-  } catch (e: any) {
-    console.error(`Error: ${e.message}`);
+  } catch (e: unknown) {
+    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("Usage: bun run index.ts --provider anthropic:claude-opus-4-8 [ask <question> | <prompt>]");
     process.exit(1);
   }

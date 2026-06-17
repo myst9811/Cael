@@ -125,5 +125,5 @@ export function printLogo(): void {
   process.stdout.write(LOGO + "\n");
 }
 
-// Allow `node cael-logo.js` / `tsx cael-logo.ts` to preview the banner directly.
+// Allow `bun src/assets/logo.ts` to preview the banner directly.
 if (import.meta.url === `file://${process.argv[1]}`) printLogo();

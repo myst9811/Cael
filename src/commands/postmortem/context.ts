@@ -113,5 +113,5 @@ export function formatPostmortemContext(ctx: PostmortemContext): string {
     ctx.topProcesses,
   );
 
-  return sections.filter(s => s !== undefined).join("\n");
+  return sections.join("\n");
 }

@@ -1,4 +1,5 @@
 import { writeFileSync } from "fs";
+import { resolve } from "path";
 import { runAgentLoop } from "../../agent";
 import { parseTimeSince } from "./time-parser";
 import { parsePostmortemFlags } from "./flags";
@@ -26,8 +27,7 @@ export async function runPostmortem(rawArgs: string, provider: LLMProvider): Pro
   if (flags.since) {
     const parsed = parseTimeSince(flags.since);
     if (!parsed) {
-      console.error(`Error: invalid --since value "${flags.since}". Use formats like 30m, 2h, 1d, or an ISO timestamp.`);
-      process.exit(1);
+      throw new Error(`Invalid --since value "${flags.since}". Use formats like 30m, 2h, 1d, or an ISO timestamp.`);
     }
     since = parsed;
   }
@@ -58,7 +58,12 @@ export async function runPostmortem(rawArgs: string, provider: LLMProvider): Pro
   const output = header + postmortem;
 
   if (outputFile) {
-    writeFileSync(outputFile, output, "utf-8");
+    const resolvedOutput = resolve(outputFile);
+    const cwd = process.cwd();
+    if (resolvedOutput !== cwd && !resolvedOutput.startsWith(cwd + "/")) {
+      throw new Error(`Output path must be within the working directory`);
+    }
+    writeFileSync(resolvedOutput, output, "utf-8");
     console.log(postmortem);
     console.log(`\n---\nSaved to ${outputFile}`);
   } else {
