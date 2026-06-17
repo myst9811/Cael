@@ -160,22 +160,25 @@ export async function executeToolWithTimeout(
   input: Record<string, unknown>,
   timeoutMs = TOOL_TIMEOUT_MS
 ): Promise<string> {
-  // Use finally to always clear the timer, avoiding the leaked-timeout bug.
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`Tool "${name}" timed out after ${timeoutMs}ms`)),
-      timeoutMs
-    );
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Tool "${name}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
   });
   try {
-    return await Promise.race([executeTool(name, input), timeoutPromise]);
+    return await Promise.race([executeTool(name, input, controller.signal), timeoutPromise]);
   } finally {
     clearTimeout(timer);
+    // Abort in all exit paths so any spawned process is killed even when
+    // the tool completes normally (abort() is a no-op after the first call).
+    controller.abort();
   }
 }
 
-export async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
+export async function executeTool(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   switch (name) {
     case "read_file": {
       if (!input.path) return "Error: path is required";
@@ -204,6 +207,8 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         stderr: "pipe",
         cwd: CWD,
       });
+      // Kill the subprocess if the timeout fires before it completes.
+      signal?.addEventListener("abort", () => proc.kill(), { once: true });
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
