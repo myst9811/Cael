@@ -3,6 +3,7 @@ import { createProvider } from "./src/providers";
 import { runAgent, runAgentLoop } from "./src/agent";
 import { runAsk } from "./src/commands/ask";
 import { runDeployCheck } from "./src/commands/deploy-check";
+import { runPostmortem } from "./src/commands/postmortem";
 
 const SUBCOMMANDS = ["ask", "watch", "deploy-check", "postmortem"] as const;
 type Subcommand = typeof SUBCOMMANDS[number];
@@ -57,6 +58,8 @@ if (import.meta.main) {
       runAsk(prompt, provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else if (subcommand === "deploy-check") {
       runDeployCheck(provider).catch((e) => { console.error(e.message); process.exit(1); });
+    } else if (subcommand === "postmortem") {
+      runPostmortem(prompt ?? "", provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else if (prompt) {
       runAgent(prompt, provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else {
