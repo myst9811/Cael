@@ -75,8 +75,41 @@ export class OllamaProvider implements LLMProvider {
           fullText += msg.content;
         }
         if (Array.isArray(msg?.tool_calls)) {
-          toolCalls.push(...(msg.tool_calls as typeof toolCalls));
+          for (const tc of msg.tool_calls as unknown[]) {
+            if (
+              typeof tc === "object" && tc !== null &&
+              typeof (tc as Record<string, unknown>).function === "object" &&
+              typeof ((tc as { function: Record<string, unknown> }).function)?.name === "string"
+            ) {
+              toolCalls.push(tc as (typeof toolCalls)[number]);
+            }
+          }
         }
+      }
+    }
+
+    // Flush any trailing content that lacked a final newline.
+    if (lineBuffer.trim()) {
+      try {
+        const data = JSON.parse(lineBuffer) as Record<string, unknown>;
+        const msg = data.message as Record<string, unknown> | undefined;
+        if (typeof msg?.content === "string") {
+          onChunk(msg.content);
+          fullText += msg.content;
+        }
+        if (Array.isArray(msg?.tool_calls)) {
+          for (const tc of msg.tool_calls as unknown[]) {
+            if (
+              typeof tc === "object" && tc !== null &&
+              typeof (tc as Record<string, unknown>).function === "object" &&
+              typeof ((tc as { function: Record<string, unknown> }).function)?.name === "string"
+            ) {
+              toolCalls.push(tc as (typeof toolCalls)[number]);
+            }
+          }
+        }
+      } catch {
+        // Malformed final chunk — skip.
       }
     }
 
