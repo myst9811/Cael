@@ -6,10 +6,11 @@ export interface WatchState {
   queryInput: string;
   aiResponse: string;
   agentActivity: string;
+  scrollOffset: number; // 0 = pinned to bottom, >0 = scrolled up by N lines
 }
 
 export function createWatchState(): WatchState {
-  return { mode: "IDLE", queryInput: "", aiResponse: "", agentActivity: "" };
+  return { mode: "IDLE", queryInput: "", aiResponse: "", agentActivity: "", scrollOffset: 0 };
 }
 
 export function handleKey(
@@ -39,6 +40,8 @@ export function handleKey(
 
     case "SHOWING_RESULT":
       if (key === "q" || key === "Q" || key === "\x03") return { state, action: "quit" };
-      return { state: { ...state, mode: "IDLE", aiResponse: "" }, action: "none" };
+      if (key === "\x1b[A") return { state: { ...state, scrollOffset: state.scrollOffset + 1 }, action: "none" };
+      if (key === "\x1b[B") return { state: { ...state, scrollOffset: Math.max(0, state.scrollOffset - 1) }, action: "none" };
+      return { state: { ...state, mode: "IDLE", aiResponse: "", scrollOffset: 0 }, action: "none" };
   }
 }

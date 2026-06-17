@@ -39,3 +39,16 @@ test("buildFrame IDLE same line count as SHOWING_RESULT", () => {
   const showing = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "" });
   expect(idle.split("\n").length).toBe(showing.split("\n").length);
 });
+
+test("buildFrame shows scroll hint when response overflows visible area", () => {
+  const longResponse = Array(50).fill("line of text that wraps across the frame").join(" ");
+  const frame = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse });
+  expect(frame).toContain("↑↓");
+});
+
+test("buildFrame same line count with scrollOffset > 0 as scrollOffset 0", () => {
+  const longResponse = Array(50).fill("overflow line").join(" ");
+  const atBottom = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse, scrollOffset: 0 });
+  const scrolledUp = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse, scrollOffset: 5 });
+  expect(atBottom.split("\n").length).toBe(scrolledUp.split("\n").length);
+});

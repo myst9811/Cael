@@ -80,6 +80,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       queryInput: state.queryInput,
       aiResponse: state.aiResponse,
       agentActivity: state.agentActivity,
+      scrollOffset: state.scrollOffset,
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
@@ -127,7 +128,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       { role: "user" as const, content: question },
     ];
 
-    state = { ...state, mode: "SHOWING_RESULT", aiResponse: "", agentActivity: "" };
+    state = { ...state, mode: "SHOWING_RESULT", aiResponse: "", agentActivity: "", scrollOffset: 0 };
     draw();
 
     try {
