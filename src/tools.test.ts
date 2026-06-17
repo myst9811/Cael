@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { executeToolWithTimeout } from "./tools";
+import { executeToolWithTimeout, watchTools, tools, MAX_TOOL_RESULT_CHARS } from "./tools";
 
 test("executeToolWithTimeout: returns result for fast tool", async () => {
   const result = await executeToolWithTimeout("list_dir", { path: "." }, 5000);
@@ -16,4 +16,30 @@ test("executeToolWithTimeout: rejects with timeout error when deadline exceeded"
 
 test("executeToolWithTimeout: unknown tool throws immediately (not a timeout)", async () => {
   await expect(executeToolWithTimeout("totally_unknown_tool", {}, 5000)).rejects.toThrow("Unknown tool");
+});
+
+test("MAX_TOOL_RESULT_CHARS is 10000", () => {
+  expect(MAX_TOOL_RESULT_CHARS).toBe(10_000);
+});
+
+test("watchTools does not include write_file", () => {
+  expect(watchTools.find(t => t.name === "write_file")).toBeUndefined();
+});
+
+test("watchTools includes all collector tools", () => {
+  const names = watchTools.map(t => t.name);
+  for (const n of ["get_system_metrics", "get_docker_status", "get_docker_logs", "get_git_status", "get_process_list"]) {
+    expect(names).toContain(n);
+  }
+});
+
+test("watchTools includes read-only code tools", () => {
+  const names = watchTools.map(t => t.name);
+  for (const n of ["read_file", "run_shell", "list_dir"]) {
+    expect(names).toContain(n);
+  }
+});
+
+test("tools (full set) still includes write_file", () => {
+  expect(tools.find(t => t.name === "write_file")).toBeDefined();
 });

@@ -100,6 +100,8 @@ export interface FrameOptions {
   mode: WatchMode;
   queryInput: string;
   aiResponse: string;
+  agentActivity: string;
+  scrollOffset?: number; // 0 = pinned to bottom; omit or 0 for auto-scroll
   timestamp: string;
   statusError?: string | null;
 }
@@ -210,13 +212,31 @@ export function buildFrame(opts: FrameOptions): string {
     }
 
     const responseLines = wrapWords(opts.aiResponse, innerW - 4);
-    const visible = responseLines.length <= responseContentRows
-      ? [...responseLines, ...Array<string>(responseContentRows - responseLines.length).fill("")]
-      : responseLines.slice(-responseContentRows);
+    // Reserve one row for agentActivity when there's room (responseContentRows >= 2).
+    const hasActivityRow = responseContentRows >= 2;
+    const visibleResponseRows = hasActivityRow ? responseContentRows - 1 : responseContentRows;
+    const maxOffset = Math.max(0, responseLines.length - visibleResponseRows);
+    const offset = Math.min(opts.scrollOffset ?? 0, maxOffset);
+    let visible: string[];
+    if (responseLines.length <= visibleResponseRows) {
+      visible = [...responseLines, ...Array<string>(visibleResponseRows - responseLines.length).fill("")];
+    } else {
+      const end = responseLines.length - offset;
+      visible = responseLines.slice(end - visibleResponseRows, end);
+    }
     for (const rl of visible) {
       frame += `${B.v}${pad(`  ${rl}`, innerW)}${B.v}\n`;
     }
-    frame += `${B.v}${pad(`  ${A.dim}[any key to dismiss]${A.reset}`, innerW)}${B.v}\n`;
+    if (hasActivityRow) {
+      const activityText = opts.agentActivity
+        ? `  ${A.dim}${opts.agentActivity}${A.reset}`
+        : "";
+      frame += `${B.v}${pad(activityText, innerW)}${B.v}\n`;
+    }
+    const scrollHint = maxOffset > 0
+      ? `  ${A.dim}[↑↓] scroll · [any other key] dismiss${A.reset}`
+      : `  ${A.dim}[any key to dismiss]${A.reset}`;
+    frame += `${B.v}${pad(scrollHint, innerW)}${B.v}\n`;
   }
 
   // ── Bottom border ─────────────────────────────────────────────────────────

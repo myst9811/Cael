@@ -80,3 +80,39 @@ test("ESC clears queryInput when returning to IDLE", () => {
   expect(state.queryInput).toBe("");
   expect(state.mode).toBe("IDLE");
 });
+
+test("createWatchState initialises agentActivity to empty string", () => {
+  expect(createWatchState().agentActivity).toBe("");
+});
+
+test("createWatchState initialises scrollOffset to 0", () => {
+  expect(createWatchState().scrollOffset).toBe(0);
+});
+
+test("up arrow in SHOWING_RESULT increments scrollOffset without dismissing", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const };
+  const { state, action } = handleKey(s, "\x1b[A");
+  expect(state.scrollOffset).toBe(1);
+  expect(state.mode).toBe("SHOWING_RESULT");
+  expect(action).toBe("none");
+});
+
+test("down arrow in SHOWING_RESULT decrements scrollOffset (min 0)", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, scrollOffset: 2 };
+  const { state } = handleKey(s, "\x1b[B");
+  expect(state.scrollOffset).toBe(1);
+  expect(state.mode).toBe("SHOWING_RESULT");
+});
+
+test("down arrow at scrollOffset 0 stays at 0", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, scrollOffset: 0 };
+  const { state } = handleKey(s, "\x1b[B");
+  expect(state.scrollOffset).toBe(0);
+});
+
+test("any other key in SHOWING_RESULT resets scrollOffset to 0 and returns to IDLE", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, scrollOffset: 5 };
+  const { state } = handleKey(s, " ");
+  expect(state.mode).toBe("IDLE");
+  expect(state.scrollOffset).toBe(0);
+});
