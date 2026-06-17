@@ -4,6 +4,7 @@ import { buildFrame, generateAlerts, A } from "../tui/draw";
 import { createWatchState, handleKey } from "../tui/state";
 import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
+import { LOGO } from "../assets/logo";
 import type { LLMProvider } from "../providers/types";
 import type { CollectedContext } from "../collectors/types";
 
@@ -54,6 +55,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
 
   // Enter alternate screen + hide cursor — this isolates TUI from scrollback
   process.stdout.write(A.altEnter + A.hideCursor);
+
+  // Show logo splash while first metrics are collected
+  process.stdout.write(A.clear + LOGO + "\n\n  collecting live metrics...\n");
 
   // ── Draw ─────────────────────────────────────────────────────────────────
   const draw = () => {
