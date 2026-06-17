@@ -51,8 +51,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   try {
     const { provider: providerSpec, subcommand, prompt } = parseArgs(args);
-    // watch uses a full-screen alt buffer — printing the logo would cause a flash.
-    if (subcommand !== "watch") printLogo();
+    printLogo();
     const provider = createProvider(providerSpec);
 
     if (subcommand === "ask") {
