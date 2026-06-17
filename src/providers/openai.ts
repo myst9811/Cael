@@ -73,12 +73,16 @@ export class OpenAIProvider implements LLMProvider {
 
     const oaiMessages = translateMessagesForOpenAI(messages);
 
+    // OpenAI has no top-level system field — inject it as the first message.
+    if (options?.system) {
+      oaiMessages.unshift({ role: "system", content: options.system });
+    }
+
     const stream = await this.client.chat.completions.create({
       model: this.model,
       tools: oaiTools,
       messages: oaiMessages,
       stream: true,
-      ...(options?.system ? { system: options.system } : {}),
     } as any);
 
     let fullText = "";
@@ -100,11 +104,15 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    const toolCalls = Object.values(toolCallAccumulator).map((tc: any) => ({
-      id: tc.id,
-      name: tc.name,
-      input: JSON.parse(tc.args || "{}"),
-    }));
+    const toolCalls = Object.values(toolCallAccumulator).map((tc: any) => {
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(tc.args || "{}");
+      } catch {
+        // Malformed JSON from a partial/interrupted stream — treat as empty input.
+      }
+      return { id: tc.id, name: tc.name, input };
+    });
 
     return {
       text: fullText,
