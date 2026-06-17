@@ -2,6 +2,7 @@ import * as readline from "readline";
 import { createProvider } from "./src/providers";
 import { runAgent, runAgentLoop } from "./src/agent";
 import { runAsk } from "./src/commands/ask";
+import { runDeployCheck } from "./src/commands/deploy-check";
 
 const SUBCOMMANDS = ["ask", "watch", "deploy-check", "postmortem"] as const;
 type Subcommand = typeof SUBCOMMANDS[number];
@@ -54,6 +55,8 @@ if (import.meta.main) {
         process.exit(1);
       }
       runAsk(prompt, provider).catch((e) => { console.error(e.message); process.exit(1); });
+    } else if (subcommand === "deploy-check") {
+      runDeployCheck(provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else if (prompt) {
       runAgent(prompt, provider).catch((e) => { console.error(e.message); process.exit(1); });
     } else {
