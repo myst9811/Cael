@@ -202,14 +202,7 @@ export function buildFrame(opts: FrameOptions): string {
   } else {
     // SHOWING_RESULT — show the submitted question, then the streamed response.
     // Auto-scroll so the latest text is always visible.
-    const hasQuery = opts.queryInput.length > 0;
-    const queryHeaderRows = hasQuery ? 2 : 0; // "  > question" + blank separator
-    const responseContentRows = Math.max(1, contentRows - queryHeaderRows);
-
-    if (hasQuery) {
-      frame += `${B.v}${pad(`  ${A.dim}> ${opts.queryInput}${A.reset}`, innerW)}${B.v}\n`;
-      frame += `${B.v}${pad("", innerW)}${B.v}\n`;
-    }
+    const responseContentRows = contentRows;
 
     const responseLines = wrapWords(opts.aiResponse, innerW - 4);
     // Reserve one row for agentActivity when there's room (responseContentRows >= 2).
@@ -234,8 +227,8 @@ export function buildFrame(opts: FrameOptions): string {
       frame += `${B.v}${pad(activityText, innerW)}${B.v}\n`;
     }
     const scrollHint = maxOffset > 0
-      ? `  ${A.dim}[↑↓] scroll · [any other key] dismiss${A.reset}`
-      : `  ${A.dim}[any key to dismiss]${A.reset}`;
+      ? `  ${A.dim}[↑↓] scroll · [/] ask more · [ESC] clear${A.reset}`
+      : `  ${A.dim}[/] ask more · [ESC] clear${A.reset}`;
     frame += `${B.v}${pad(scrollHint, innerW)}${B.v}\n`;
   }
 

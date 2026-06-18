@@ -105,7 +105,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     } catch (e: unknown) {
       lastRefreshError = e instanceof Error ? e.message : "collection failed";
     }
-    if (!querying && state.mode === "IDLE") draw();
+    if (!querying) draw();
   };
 
   // Print the logo, save cursor position immediately below it, then collect
@@ -136,7 +136,10 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       { role: "user" as const, content: question },
     ];
 
-    state = { ...state, mode: "SHOWING_RESULT", aiResponse: "", agentActivity: "", scrollOffset: 0 };
+    const prevContent = state.aiResponse.trim();
+    const separator = prevContent ? "\n\n" + "─".repeat(40) + "\n\n" : "";
+    const turnPrefix = separator + `> ${question}\n\n`;
+    state = { ...state, mode: "SHOWING_RESULT", aiResponse: prevContent + turnPrefix, agentActivity: "", scrollOffset: 0 };
     draw();
 
     try {
@@ -174,7 +177,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
           }
         }
       } catch { /* not JSON — use raw */ }
-      state = { ...state, aiResponse: `Error: ${friendly}` };
+      state = { ...state, aiResponse: state.aiResponse + `Error: ${friendly}` };
       draw();
     } finally {
       state = { ...state, agentActivity: "" };

@@ -14,18 +14,18 @@ const BASE_OPTS = {
   statusError: null,
 };
 
-test("buildFrame SHOWING_RESULT renders agentActivity on row before dismiss", () => {
+test("buildFrame SHOWING_RESULT renders agentActivity on row before hint", () => {
   const frame = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "⟳ calling get_process_list..." });
   const lines = frame.split("\n");
-  const dismissIdx = lines.findIndex(l => l.includes("any key to dismiss"));
+  const hintIdx = lines.findIndex(l => l.includes("ESC") && l.includes("clear"));
   const activityIdx = lines.findIndex(l => l.includes("calling get_process_list"));
   expect(activityIdx).toBeGreaterThan(-1);
-  expect(activityIdx).toBe(dismissIdx - 1);
+  expect(activityIdx).toBe(hintIdx - 1);
 });
 
 test("buildFrame SHOWING_RESULT blank activity row when agentActivity is empty", () => {
   const frame = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "" });
-  expect(frame).toContain("any key to dismiss");
+  expect(frame).toContain("[ESC] clear");
 });
 
 test("buildFrame SHOWING_RESULT same line count with and without agentActivity", () => {

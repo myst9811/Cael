@@ -58,11 +58,11 @@ test("Enter with empty queryInput → no action", () => {
   expect(state.mode).toBe("QUERYING");
 });
 
-test("any printable key in SHOWING_RESULT → back to IDLE", () => {
+test("non-special key in SHOWING_RESULT → no-op (stays in SHOWING_RESULT)", () => {
   const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, aiResponse: "hi" };
   const { state, action } = handleKey(s, " ");
-  expect(state.mode).toBe("IDLE");
-  expect(state.aiResponse).toBe("");
+  expect(state.mode).toBe("SHOWING_RESULT");
+  expect(state.aiResponse).toBe("hi");
   expect(action).toBe("none");
 });
 
@@ -110,9 +110,27 @@ test("down arrow at scrollOffset 0 stays at 0", () => {
   expect(state.scrollOffset).toBe(0);
 });
 
-test("any other key in SHOWING_RESULT resets scrollOffset to 0 and returns to IDLE", () => {
+test("non-special key in SHOWING_RESULT → no-op (keeps scrollOffset)", () => {
   const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, scrollOffset: 5 };
   const { state } = handleKey(s, " ");
-  expect(state.mode).toBe("IDLE");
+  expect(state.mode).toBe("SHOWING_RESULT");
+  expect(state.scrollOffset).toBe(5);
+});
+
+test("/ in SHOWING_RESULT → QUERYING with empty queryInput", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, aiResponse: "some answer", scrollOffset: 3 };
+  const { state, action } = handleKey(s, "/");
+  expect(state.mode).toBe("QUERYING");
+  expect(state.queryInput).toBe("");
   expect(state.scrollOffset).toBe(0);
+  expect(action).toBe("none");
+});
+
+test("ESC in SHOWING_RESULT → IDLE and clears history", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const, aiResponse: "some answer", scrollOffset: 3 };
+  const { state, action } = handleKey(s, "\x1b");
+  expect(state.mode).toBe("IDLE");
+  expect(state.aiResponse).toBe("");
+  expect(state.scrollOffset).toBe(0);
+  expect(action).toBe("none");
 });
