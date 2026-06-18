@@ -6,7 +6,7 @@ import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
 import type { LLMProvider, Message } from "../providers/types";
 import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
-import { printLogo, LOGO_ROWS } from "../assets/logo";
+import { LOGO, LOGO_ROWS } from "../assets/logo";
 import { runWatchAgentLoop } from "./watch-agent";
 import { watchTools } from "../tools";
 
@@ -56,7 +56,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
     process.stdout.removeListener("resize", onResize);
-    process.stdout.write(A.showCursor);
+    process.stdout.write(A.showCursor + A.altExit);
     process.exit(code);
   };
 
@@ -84,7 +84,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
-    process.stdout.write(A.restoreCursor + frame + A.clearBelow);
+    process.stdout.write(A.cursorHome + LOGO + "\n" + frame + A.clearBelow);
   };
 
   // ── Refresh ───────────────────────────────────────────────────────────────
@@ -102,8 +102,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // Print the logo, save cursor position immediately below it, then collect
   // the first data snapshot. The dashboard renders below the logo on every
   // subsequent draw() by restoring to the saved cursor position.
-  printLogo();
-  process.stdout.write(A.hideCursor + A.saveCursor);
+  process.stdout.write(A.altEnter + A.hideCursor);
   await doRefresh();
 
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
