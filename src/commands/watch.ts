@@ -102,7 +102,8 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // Print the logo, save cursor position immediately below it, then collect
   // the first data snapshot. The dashboard renders below the logo on every
   // subsequent draw() by restoring to the saved cursor position.
-  process.stdout.write(A.altEnter + A.hideCursor);
+  // Clear normal screen first to wipe any startup garbage, then enter alt screen
+  process.stdout.write("\x1b[2J\x1b[H" + A.altEnter + A.hideCursor);
   await doRefresh();
 
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
