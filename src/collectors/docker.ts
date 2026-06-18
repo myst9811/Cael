@@ -58,8 +58,9 @@ export async function getDockerLogs(container: string, lines = 100, since?: stri
     : $`docker logs ${container} --tail ${String(lines)}`;
 
   const raw = await args.quiet().text();
-  const truncated = Buffer.byteLength(raw) > MAX_BYTES;
-  const logs = truncated ? raw.slice(0, MAX_BYTES) + "\n[truncated]" : raw;
+  const buf = Buffer.from(raw, "utf8");
+  const truncated = buf.byteLength > MAX_BYTES;
+  const logs = truncated ? buf.slice(0, MAX_BYTES).toString("utf8") + "\n[truncated]" : raw;
 
   return { logs, truncated };
 }

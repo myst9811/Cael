@@ -53,15 +53,23 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const onResize = () => { if (!querying) draw(); };
 
+  // Forward-declared so cleanup can deregister it before exiting
+  let onCrash: () => void = () => {};
+
   const cleanup = (code = 0) => {
     if (refreshTimer) clearInterval(refreshTimer);
     process.stdout.removeListener("resize", onResize);
+    process.removeListener("uncaughtException", onCrash);
+    process.removeListener("unhandledRejection", onCrash);
     process.stdout.write(A.showCursor + A.altExit);
     process.exit(code);
   };
 
-  process.on("SIGINT", () => cleanup(0));
-  process.on("SIGTERM", () => cleanup(0));
+  onCrash = () => cleanup(1);
+  process.once("SIGINT", () => cleanup(0));
+  process.once("SIGTERM", () => cleanup(0));
+  process.once("uncaughtException", onCrash);
+  process.once("unhandledRejection", onCrash);
 
   // ── Draw ─────────────────────────────────────────────────────────────────
   // Restores cursor to the saved position (right below the logo) and redraws
@@ -84,7 +92,8 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
     });
-    process.stdout.write(A.cursorHome + LOGO + "\n" + frame + A.clearBelow);
+    const logoBody = LOGO.startsWith("\n") ? LOGO.slice(1) : LOGO;
+    process.stdout.write(A.cursorHome + logoBody + "\n" + frame + A.clearBelow);
   };
 
   // ── Refresh ───────────────────────────────────────────────────────────────
@@ -102,8 +111,7 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   // Print the logo, save cursor position immediately below it, then collect
   // the first data snapshot. The dashboard renders below the logo on every
   // subsequent draw() by restoring to the saved cursor position.
-  // Clear normal screen first to wipe any startup garbage, then enter alt screen
-  process.stdout.write("\x1b[2J\x1b[H" + A.altEnter + A.hideCursor);
+  process.stdout.write("\x1b[2J\x1b[H" + A.altEnter + "\x1b[2J\x1b[H" + A.hideCursor);
   await doRefresh();
 
   refreshTimer = setInterval(doRefresh, REFRESH_MS);
