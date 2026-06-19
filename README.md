@@ -105,7 +105,7 @@ cael deploy-check && ./deploy.sh
 ## `cael postmortem` — draft the incident report automatically
 
 ```bash
-bun run index.ts --provider anthropic:claude-opus-4-8 postmortem "api down 02:00–02:47"
+cael --provider anthropic:claude-opus-4-8 postmortem "api down 02:00–02:47"
 ```
 
 Reads logs, git history, and process state from the incident window. Outputs a structured draft: timeline, probable cause, contributing factors, action items. You review, you edit, you ship it — no starting from a blank page at 4am.
@@ -129,7 +129,7 @@ Same agent, same tools, no TUI. Pipe it anywhere.
 ## REPL — extended investigation session
 
 ```bash
-bun run index.ts --provider anthropic:claude-opus-4-8
+cael --provider anthropic:claude-opus-4-8
 # cael> walk me through what this service is doing
 # cael> which of those containers has the most restarts in the last day?
 # cael> show me the last 50 lines of the worker logs
@@ -142,13 +142,37 @@ Full tool access. Multi-turn. History persists until you exit.
 
 ## Install
 
+Download the binary for your platform from the [latest release](https://github.com/myst9811/Cael/releases/latest):
+
+**macOS (Apple Silicon)**
 ```bash
-git clone https://github.com/myst9811/Cael
-cd Cael
-bun install
+curl -L https://github.com/myst9811/Cael/releases/latest/download/cael-darwin-arm64 -o cael
+chmod +x cael && xattr -dr com.apple.quarantine cael
+sudo mv cael /usr/local/bin/cael
 ```
 
-Set at least one key:
+**macOS (Intel)**
+```bash
+curl -L https://github.com/myst9811/Cael/releases/latest/download/cael-darwin-x64 -o cael
+chmod +x cael && xattr -dr com.apple.quarantine cael
+sudo mv cael /usr/local/bin/cael
+```
+
+**Linux (x86_64)**
+```bash
+curl -L https://github.com/myst9811/Cael/releases/latest/download/cael-linux-x64 -o cael
+chmod +x cael && sudo mv cael /usr/local/bin/cael
+```
+
+**Linux (ARM64)**
+```bash
+curl -L https://github.com/myst9811/Cael/releases/latest/download/cael-linux-arm64 -o cael
+chmod +x cael && sudo mv cael /usr/local/bin/cael
+```
+
+> **macOS note:** The `xattr` command removes the quarantine flag macOS applies to binaries downloaded from the internet. Run it once after downloading.
+
+Then set at least one API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # Claude

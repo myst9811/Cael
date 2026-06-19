@@ -74,7 +74,7 @@ if (import.meta.main) {
     }
   } catch (e: unknown) {
     console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    console.error("Usage: bun run index.ts --provider anthropic:claude-opus-4-8 [ask <question> | <prompt>]");
+    console.error("Usage: cael --provider anthropic:claude-opus-4-8 [ask <question> | <prompt>]");
     process.exit(1);
   }
 }
