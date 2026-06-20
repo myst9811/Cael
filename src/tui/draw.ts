@@ -1,4 +1,5 @@
 import type { WatchMode } from "./state";
+import { renderMarkdown } from "./markdown";
 
 // ── ANSI codes ───────────────────────────────────────────────────────────────
 export const A = {
@@ -204,7 +205,7 @@ export function buildFrame(opts: FrameOptions): string {
     // Auto-scroll so the latest text is always visible.
     const responseContentRows = contentRows;
 
-    const responseLines = wrapWords(opts.aiResponse, innerW - 4);
+    const responseLines = renderMarkdown(opts.aiResponse, innerW - 4);
     // Reserve one row for agentActivity when there's room (responseContentRows >= 2).
     const hasActivityRow = responseContentRows >= 2;
     const visibleResponseRows = hasActivityRow ? responseContentRows - 1 : responseContentRows;
