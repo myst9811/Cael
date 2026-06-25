@@ -101,6 +101,12 @@ function formatEvidenceBlock(ctx: CollectedContext, toolsUsed: string[], provide
   return lines.join("\n");
 }
 
+/**
+ * Prints the AI answer to stdout, followed by a blank line and an evidence
+ * block (snapshot timestamp, provider, tools called during the agent loop, and
+ * key system metrics). Callers and snapshot tests should expect this two-part
+ * output format.
+ */
 export async function runAsk(question: string, provider: LLMProvider): Promise<void> {
   process.stdout.write("Collecting system state...\n\n");
   const ctx = await collectAll();
