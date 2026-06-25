@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { executeToolWithTimeout, watchTools, tools, MAX_TOOL_RESULT_CHARS } from "./tools";
+import { executeToolWithTimeout, watchExecuteToolWithTimeout, watchTools, tools, MAX_TOOL_RESULT_CHARS } from "./tools";
 
 test("executeToolWithTimeout: returns result for fast tool", async () => {
   const result = await executeToolWithTimeout("list_dir", { path: "." }, 5000);
@@ -51,4 +51,45 @@ test("run_shell output has secrets redacted", async () => {
   expect(result).not.toContain("sk-super-secret-value");
   expect(result).toContain("[REDACTED]");
   expect(result).toContain("PORT=8080");
+});
+
+test("run_shell blocks dd (global denylist)", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "dd if=/dev/zero of=/tmp/zeros" }, 5000);
+  expect(result).toMatch(/not permitted|denied/i);
+});
+
+test("run_shell blocks mkfs (global denylist)", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "mkfs.ext4 /dev/sda" }, 5000);
+  expect(result).toMatch(/not permitted|denied/i);
+});
+
+test("run_shell blocks shred (global denylist)", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "shred /tmp/somefile" }, 5000);
+  expect(result).toMatch(/not permitted|denied/i);
+});
+
+test("run_shell allows ls in normal mode", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "ls ." }, 5000);
+  expect(result).not.toMatch(/not permitted|denied/i);
+});
+
+test("watchExecuteToolWithTimeout blocks unknown command in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "python3 exploit.py" }, 5000);
+  expect(result).toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout allows grep in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "grep -r TODO ." }, 5000);
+  expect(result).not.toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout allows docker ps in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "docker ps" }, 5000);
+  expect(result).not.toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout non-shell tools still work", async () => {
+  const result = await watchExecuteToolWithTimeout("list_dir", { path: "." }, 5000);
+  expect(typeof result).toBe("string");
+  expect(result.length).toBeGreaterThan(0);
 });

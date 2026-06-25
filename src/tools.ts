@@ -66,6 +66,42 @@ function parseCommandArgs(cmd: string): string[] {
   return args;
 }
 
+// ── Shell safety ──────────────────────────────────────────────────────────────
+const SHELL_GLOBAL_DENYLIST = new Set([
+  "dd", "mkfs", "shred", "wipefs", "fdisk", "parted", "gdisk", "diskutil",
+]);
+
+const WATCH_SHELL_ALLOWLIST = new Set([
+  "ls", "cat", "grep", "find", "head", "tail", "wc", "sort", "uniq",
+  "awk", "sed", "cut", "tr", "xargs",
+  "ps", "df", "du", "stat", "file", "lsof", "netstat", "ss", "ip", "ifconfig",
+  "echo", "printf", "pwd", "which", "type", "env", "printenv",
+  "date", "uptime", "uname", "hostname", "id", "whoami",
+  "docker", "git", "curl", "ping", "nslookup", "dig",
+  "systemctl", "journalctl", "launchctl",
+  "lscpu", "free", "vmstat", "iostat",
+]);
+
+function checkShellDenylist(argv: string[]): string | null {
+  const cmd = argv[0]?.toLowerCase() ?? "";
+  // Exact match or prefix match (e.g. mkfs.ext4, mkfs.vfat)
+  const isDenied = SHELL_GLOBAL_DENYLIST.has(cmd) ||
+    [...SHELL_GLOBAL_DENYLIST].some((d) => cmd.startsWith(d + ".") || cmd.startsWith(d + "-"));
+  if (isDenied) {
+    return `Error: command '${cmd}' is not permitted (destructive disk/file operation)`;
+  }
+  return null;
+}
+
+function checkWatchAllowlist(argv: string[]): string | null {
+  const cmd = argv[0]?.toLowerCase() ?? "";
+  if (!WATCH_SHELL_ALLOWLIST.has(cmd)) {
+    const sample = [...WATCH_SHELL_ALLOWLIST].slice(0, 8).join(", ");
+    return `Error: command '${cmd}' is not permitted in watch mode (read-only shell policy). Allowed: ${sample}, ...`;
+  }
+  return null;
+}
+
 export const MAX_TOOL_RESULT_CHARS = 10_000;
 
 const readFileTool: ToolDefinition = {
@@ -216,6 +252,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
       if (!input.command) return "Error: command is required";
       const argv = parseCommandArgs(String(input.command).trim());
       if (argv.length === 0) return "Error: empty command";
+      const denyErr = checkShellDenylist(argv);
+      if (denyErr) return denyErr;
       const [cmd, ...args] = argv;
       const proc = Bun.spawn([cmd!, ...args], {
         stdout: "pipe",
@@ -276,4 +314,34 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
   }
 
   throw new Error(`Unknown tool: ${name}`);
+}
+
+async function watchExecuteTool(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  if (name === "run_shell") {
+    const argv = parseCommandArgs(String(input.command ?? "").trim());
+    const allowErr = checkWatchAllowlist(argv);
+    if (allowErr) return allowErr;
+  }
+  return executeTool(name, input, signal);
+}
+
+export async function watchExecuteToolWithTimeout(
+  name: string,
+  input: Record<string, unknown>,
+  timeoutMs = TOOL_TIMEOUT_MS
+): Promise<string> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Tool "${name}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([watchExecuteTool(name, input, controller.signal), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
