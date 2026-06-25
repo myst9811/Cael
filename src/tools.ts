@@ -6,6 +6,7 @@ import { getSystemMetrics } from "./collectors/system";
 import { getDockerStatus, getDockerLogs } from "./collectors/docker";
 import { getGitStatus } from "./collectors/git";
 import { getProcessList } from "./collectors/process";
+import { redactSecrets } from "./redact";
 
 // ── Path safety ───────────────────────────────────────────────────────────────
 // Restrict all file/dir operations to the process working directory to prevent
@@ -63,6 +64,78 @@ function parseCommandArgs(cmd: string): string[] {
   }
   if (current) args.push(current);
   return args;
+}
+
+// ── Shell safety ──────────────────────────────────────────────────────────────
+const SHELL_GLOBAL_DENYLIST = new Set([
+  "dd", "mkfs", "shred", "wipefs", "fdisk", "parted", "gdisk", "diskutil",
+]);
+
+// Watch mode: only genuinely read-only commands. curl/systemctl/launchctl/env/xargs removed
+// because they can mutate state or act as wrappers for other commands.
+const WATCH_SHELL_ALLOWLIST = new Set([
+  "ls", "cat", "grep", "find", "head", "tail", "wc", "sort", "uniq",
+  "awk", "sed", "cut", "tr",
+  "ps", "df", "du", "stat", "file", "lsof", "netstat", "ss", "ip", "ifconfig",
+  "echo", "printf", "pwd", "which", "type", "printenv",
+  "date", "uptime", "uname", "hostname", "id", "whoami",
+  "docker", "git", "ping", "nslookup", "dig",
+  "journalctl",
+  "lscpu", "free", "vmstat", "iostat",
+]);
+
+// docker and git subcommands that are safe to run in watch mode (read-only)
+const DOCKER_READ_SUBCMDS = new Set([
+  "ps", "inspect", "logs", "stats", "top", "port",
+  "images", "image", "network", "volume", "info", "version", "compose",
+]);
+const GIT_READ_SUBCMDS = new Set([
+  "status", "log", "diff", "show", "branch", "stash",
+  "describe", "remote", "tag", "blame", "shortlog",
+]);
+
+// Shell interpreters that can wrap denylisted commands via -c
+const WRAPPER_SHELLS = new Set(["sh", "bash", "zsh", "env"]);
+
+function checkShellDenylist(argv: string[]): string | null {
+  const cmd = argv[0]?.toLowerCase() ?? "";
+  // Exact match or prefix match (e.g. mkfs.ext4, mkfs.vfat)
+  const isDenied = (d: string) => cmd === d || cmd.startsWith(d + ".") || cmd.startsWith(d + "-");
+  if ([...SHELL_GLOBAL_DENYLIST].some(isDenied)) {
+    return `Error: command '${cmd}' is not permitted (destructive disk/file operation)`;
+  }
+  // Wrapper check: sh -c 'dd ...' / bash -c 'mkfs ...' hide the real command in arguments
+  if (WRAPPER_SHELLS.has(cmd)) {
+    const inner = argv.slice(1).join(" ").toLowerCase();
+    for (const denied of SHELL_GLOBAL_DENYLIST) {
+      if (new RegExp(`\\b${denied}\\b`).test(inner)) {
+        return `Error: command '${denied}' is not permitted (destructive disk/file operation via shell wrapper)`;
+      }
+    }
+  }
+  return null;
+}
+
+function checkWatchAllowlist(argv: string[]): string | null {
+  const cmd = argv[0]?.toLowerCase() ?? "";
+  if (!WATCH_SHELL_ALLOWLIST.has(cmd)) {
+    const sample = [...WATCH_SHELL_ALLOWLIST].slice(0, 8).join(", ");
+    return `Error: command '${cmd}' is not permitted in watch mode (read-only shell policy). Allowed: ${sample}, ...`;
+  }
+  // Per-command subcommand gating for tools that can mutate state
+  if (cmd === "docker") {
+    const sub = argv[1]?.toLowerCase();
+    if (!sub || !DOCKER_READ_SUBCMDS.has(sub)) {
+      return `Error: docker '${sub ?? ""}' is not permitted in watch mode. Allowed: ${[...DOCKER_READ_SUBCMDS].join(", ")}`;
+    }
+  }
+  if (cmd === "git") {
+    const sub = argv[1]?.toLowerCase();
+    if (!sub || !GIT_READ_SUBCMDS.has(sub)) {
+      return `Error: git '${sub ?? ""}' is not permitted in watch mode. Allowed: ${[...GIT_READ_SUBCMDS].join(", ")}`;
+    }
+  }
+  return null;
 }
 
 export const MAX_TOOL_RESULT_CHARS = 10_000;
@@ -215,6 +288,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
       if (!input.command) return "Error: command is required";
       const argv = parseCommandArgs(String(input.command).trim());
       if (argv.length === 0) return "Error: empty command";
+      const denyErr = checkShellDenylist(argv);
+      if (denyErr) return denyErr;
       const [cmd, ...args] = argv;
       const proc = Bun.spawn([cmd!, ...args], {
         stdout: "pipe",
@@ -229,7 +304,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
         proc.exited,
       ]);
       const out = stdout + (stderr ? `\nstderr: ${stderr}` : "");
-      return exitCode !== 0 ? `[exit ${exitCode}]\n${out}` : out;
+      return exitCode !== 0 ? `[exit ${exitCode}]\n${redactSecrets(out)}` : redactSecrets(out);
     }
 
     case "list_dir": {
@@ -256,7 +331,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
         linesRaw !== undefined && Number.isFinite(linesRaw) ? linesRaw : undefined,
         input.since !== undefined ? String(input.since) : undefined
       );
-      return result.truncated ? `${result.logs}\n[Note: output truncated at 10KB]` : result.logs;
+      const logs = redactSecrets(result.logs);
+      return result.truncated ? `${logs}\n[Note: output truncated at 10KB]` : logs;
     }
 
     case "get_git_status": {
@@ -274,4 +350,34 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
   }
 
   throw new Error(`Unknown tool: ${name}`);
+}
+
+async function watchExecuteTool(name: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  if (name === "run_shell") {
+    const argv = parseCommandArgs(String(input.command ?? "").trim());
+    const allowErr = checkWatchAllowlist(argv);
+    if (allowErr) return allowErr;
+  }
+  return executeTool(name, input, signal);
+}
+
+export async function watchExecuteToolWithTimeout(
+  name: string,
+  input: Record<string, unknown>,
+  timeoutMs = TOOL_TIMEOUT_MS
+): Promise<string> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Tool "${name}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([watchExecuteTool(name, input, controller.signal), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }

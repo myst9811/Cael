@@ -39,3 +39,6 @@ cael-darwin-arm64
 cael-darwin-x64
 cael-linux-x64
 cael-linux-arm64
+
+# git worktrees
+.worktrees

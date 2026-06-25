@@ -93,6 +93,37 @@ test("runAgentLoop stops at maxIterations and appends warning", async () => {
   expect(result).toContain("reached maximum iterations");
 });
 
+test("runAgentLoop fires onToolCall with tool name when tool is called", async () => {
+  const called: string[] = [];
+  let count = 0;
+  const mockProvider: LLMProvider = {
+    name: "mock",
+    chat: async () => {
+      count++;
+      if (count === 1) {
+        return { text: "", toolCalls: [{ id: "tc1", name: "get_system_metrics", input: {} }], stopReason: "tool_use" as const };
+      }
+      return { text: "done", toolCalls: [], stopReason: "end_turn" as const };
+    },
+  };
+  await runAgentLoop(mockProvider, [{ role: "user", content: "hi" }], {
+    onToolCall: (name) => called.push(name),
+  });
+  expect(called).toContain("get_system_metrics");
+});
+
+test("runAgentLoop does not fire onToolCall when no tools called", async () => {
+  const called: string[] = [];
+  const mockProvider: LLMProvider = {
+    name: "mock",
+    chat: async () => ({ text: "done", toolCalls: [], stopReason: "end_turn" as const }),
+  };
+  await runAgentLoop(mockProvider, [{ role: "user", content: "hi" }], {
+    onToolCall: (name) => called.push(name),
+  });
+  expect(called).toHaveLength(0);
+});
+
 test("runAgentLoop catches tool execution errors and sends is_error: true", async () => {
   const seenToolResults: any[] = [];
   const mockProvider: LLMProvider = {
