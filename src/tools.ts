@@ -71,24 +71,47 @@ const SHELL_GLOBAL_DENYLIST = new Set([
   "dd", "mkfs", "shred", "wipefs", "fdisk", "parted", "gdisk", "diskutil",
 ]);
 
+// Watch mode: only genuinely read-only commands. curl/systemctl/launchctl/env/xargs removed
+// because they can mutate state or act as wrappers for other commands.
 const WATCH_SHELL_ALLOWLIST = new Set([
   "ls", "cat", "grep", "find", "head", "tail", "wc", "sort", "uniq",
-  "awk", "sed", "cut", "tr", "xargs",
+  "awk", "sed", "cut", "tr",
   "ps", "df", "du", "stat", "file", "lsof", "netstat", "ss", "ip", "ifconfig",
-  "echo", "printf", "pwd", "which", "type", "env", "printenv",
+  "echo", "printf", "pwd", "which", "type", "printenv",
   "date", "uptime", "uname", "hostname", "id", "whoami",
-  "docker", "git", "curl", "ping", "nslookup", "dig",
-  "systemctl", "journalctl", "launchctl",
+  "docker", "git", "ping", "nslookup", "dig",
+  "journalctl",
   "lscpu", "free", "vmstat", "iostat",
 ]);
+
+// docker and git subcommands that are safe to run in watch mode (read-only)
+const DOCKER_READ_SUBCMDS = new Set([
+  "ps", "inspect", "logs", "stats", "top", "port",
+  "images", "image", "network", "volume", "info", "version", "compose",
+]);
+const GIT_READ_SUBCMDS = new Set([
+  "status", "log", "diff", "show", "branch", "stash",
+  "describe", "remote", "tag", "blame", "shortlog",
+]);
+
+// Shell interpreters that can wrap denylisted commands via -c
+const WRAPPER_SHELLS = new Set(["sh", "bash", "zsh", "env"]);
 
 function checkShellDenylist(argv: string[]): string | null {
   const cmd = argv[0]?.toLowerCase() ?? "";
   // Exact match or prefix match (e.g. mkfs.ext4, mkfs.vfat)
-  const isDenied = SHELL_GLOBAL_DENYLIST.has(cmd) ||
-    [...SHELL_GLOBAL_DENYLIST].some((d) => cmd.startsWith(d + ".") || cmd.startsWith(d + "-"));
-  if (isDenied) {
+  const isDenied = (d: string) => cmd === d || cmd.startsWith(d + ".") || cmd.startsWith(d + "-");
+  if ([...SHELL_GLOBAL_DENYLIST].some(isDenied)) {
     return `Error: command '${cmd}' is not permitted (destructive disk/file operation)`;
+  }
+  // Wrapper check: sh -c 'dd ...' / bash -c 'mkfs ...' hide the real command in arguments
+  if (WRAPPER_SHELLS.has(cmd)) {
+    const inner = argv.slice(1).join(" ").toLowerCase();
+    for (const denied of SHELL_GLOBAL_DENYLIST) {
+      if (new RegExp(`\\b${denied}\\b`).test(inner)) {
+        return `Error: command '${denied}' is not permitted (destructive disk/file operation via shell wrapper)`;
+      }
+    }
   }
   return null;
 }
@@ -98,6 +121,19 @@ function checkWatchAllowlist(argv: string[]): string | null {
   if (!WATCH_SHELL_ALLOWLIST.has(cmd)) {
     const sample = [...WATCH_SHELL_ALLOWLIST].slice(0, 8).join(", ");
     return `Error: command '${cmd}' is not permitted in watch mode (read-only shell policy). Allowed: ${sample}, ...`;
+  }
+  // Per-command subcommand gating for tools that can mutate state
+  if (cmd === "docker") {
+    const sub = argv[1]?.toLowerCase();
+    if (!sub || !DOCKER_READ_SUBCMDS.has(sub)) {
+      return `Error: docker '${sub ?? ""}' is not permitted in watch mode. Allowed: ${[...DOCKER_READ_SUBCMDS].join(", ")}`;
+    }
+  }
+  if (cmd === "git") {
+    const sub = argv[1]?.toLowerCase();
+    if (!sub || !GIT_READ_SUBCMDS.has(sub)) {
+      return `Error: git '${sub ?? ""}' is not permitted in watch mode. Allowed: ${[...GIT_READ_SUBCMDS].join(", ")}`;
+    }
   }
   return null;
 }

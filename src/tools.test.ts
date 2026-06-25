@@ -88,6 +88,31 @@ test("watchExecuteToolWithTimeout allows docker ps in watch mode", async () => {
   expect(result).not.toMatch(/not permitted/i);
 });
 
+test("run_shell blocks dd hidden via sh -c wrapper", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "sh -c 'dd if=/dev/zero of=/tmp/zeros'" }, 5000);
+  expect(result).toMatch(/not permitted/i);
+});
+
+test("run_shell blocks mkfs hidden via bash -c wrapper", async () => {
+  const result = await executeToolWithTimeout("run_shell", { command: "bash -c 'mkfs.ext4 /dev/sda'" }, 5000);
+  expect(result).toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout blocks git push in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "git push origin main" }, 5000);
+  expect(result).toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout blocks docker exec in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "docker exec mycontainer bash" }, 5000);
+  expect(result).toMatch(/not permitted/i);
+});
+
+test("watchExecuteToolWithTimeout allows git status in watch mode", async () => {
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "git status" }, 5000);
+  expect(result).not.toMatch(/not permitted/i);
+});
+
 test("watchExecuteToolWithTimeout non-shell tools still work", async () => {
   const result = await watchExecuteToolWithTimeout("list_dir", { path: "." }, 5000);
   expect(typeof result).toBe("string");
