@@ -6,6 +6,7 @@ import { getSystemMetrics } from "./collectors/system";
 import { getDockerStatus, getDockerLogs } from "./collectors/docker";
 import { getGitStatus } from "./collectors/git";
 import { getProcessList } from "./collectors/process";
+import { redactSecrets } from "./redact";
 
 // ── Path safety ───────────────────────────────────────────────────────────────
 // Restrict all file/dir operations to the process working directory to prevent
@@ -229,7 +230,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
         proc.exited,
       ]);
       const out = stdout + (stderr ? `\nstderr: ${stderr}` : "");
-      return exitCode !== 0 ? `[exit ${exitCode}]\n${out}` : out;
+      return exitCode !== 0 ? `[exit ${exitCode}]\n${redactSecrets(out)}` : redactSecrets(out);
     }
 
     case "list_dir": {
@@ -256,7 +257,8 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
         linesRaw !== undefined && Number.isFinite(linesRaw) ? linesRaw : undefined,
         input.since !== undefined ? String(input.since) : undefined
       );
-      return result.truncated ? `${result.logs}\n[Note: output truncated at 10KB]` : result.logs;
+      const logs = redactSecrets(result.logs);
+      return result.truncated ? `${logs}\n[Note: output truncated at 10KB]` : logs;
     }
 
     case "get_git_status": {

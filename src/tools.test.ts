@@ -43,3 +43,12 @@ test("watchTools includes read-only code tools", () => {
 test("tools (full set) still includes write_file", () => {
   expect(tools.find(t => t.name === "write_file")).toBeDefined();
 });
+
+test("run_shell output has secrets redacted", async () => {
+  const tmpFile = "/tmp/cael-redact-test.env";
+  await Bun.write(tmpFile, "API_KEY=sk-super-secret-value\nPORT=8080\n");
+  const result = await executeToolWithTimeout("run_shell", { command: `cat ${tmpFile}` }, 5000);
+  expect(result).not.toContain("sk-super-secret-value");
+  expect(result).toContain("[REDACTED]");
+  expect(result).toContain("PORT=8080");
+});
