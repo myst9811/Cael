@@ -67,6 +67,28 @@ test("redactSecrets redacts AWS-style access key IDs", () => {
   expect(out).toContain("[REDACTED AWS KEY]");
 });
 
+test("redactSecrets redacts provider-prefixed API key (OPENAI_API_KEY)", () => {
+  const input = "OPENAI_API_KEY=sk-proj-abcdef123456\nsome other text";
+  const out = redactSecrets(input);
+  expect(out).not.toContain("sk-proj-abcdef123456");
+  expect(out).toContain("[REDACTED]");
+  expect(out).toContain("OPENAI_API_KEY");
+});
+
+test("redactSecrets redacts ANTHROPIC_API_KEY", () => {
+  const input = "ANTHROPIC_API_KEY=sk-ant-api03-abc123";
+  const out = redactSecrets(input);
+  expect(out).not.toContain("sk-ant-api03-abc123");
+  expect(out).toContain("[REDACTED]");
+});
+
+test("redactSecrets redacts GITHUB_TOKEN", () => {
+  const input = "GITHUB_TOKEN=ghp_1234567890abcdefghij";
+  const out = redactSecrets(input);
+  expect(out).not.toContain("ghp_1234567890abcdefghij");
+  expect(out).toContain("[REDACTED]");
+});
+
 test("redactSecrets handles empty string", () => {
   expect(redactSecrets("")).toBe("");
 });

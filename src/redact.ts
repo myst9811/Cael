@@ -6,8 +6,10 @@ const SECRET_KEY_NAMES = [
   "SECRET_KEY", "AUTH_SECRET", "REFRESH_TOKEN", "ID_TOKEN", "SERVICE_KEY",
 ];
 
+// Match env-var names that end in a secret keyword, with any prefix (e.g. OPENAI_API_KEY, GITHUB_TOKEN).
+// [A-Z0-9_]* allows zero or more prefix chars before the keyword; \b anchors the start of the identifier.
 const KEY_PATTERN = new RegExp(
-  `\\b(${SECRET_KEY_NAMES.join("|")})\\s*=\\s*\\S+`,
+  `\\b([A-Z0-9_]*(?:${SECRET_KEY_NAMES.join("|")}))\\s*=\\s*\\S+`,
   "gi"
 );
 
