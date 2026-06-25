@@ -82,6 +82,25 @@ function formatContext(ctx: CollectedContext): string {
 
 const SYSTEM_PROMPT = `You are Cael, a local DevOps agent. You are given a live snapshot of this machine's system state. Use the provided tools to get more detail when needed — especially get_docker_logs for container issues. Never fabricate or estimate metrics — only report what you can observe.`;
 
+function formatEvidenceBlock(ctx: CollectedContext, toolsUsed: string[], providerName: string): string {
+  const snapshotTime = ctx.timestamp.replace("T", " ").replace(/\.\d+Z$/, " UTC");
+  const toolsSummary = toolsUsed.length > 0
+    ? [...new Set(toolsUsed)].join(", ")
+    : "none (answered from snapshot)";
+  const lines = [
+    "─".repeat(60),
+    `Evidence  |  Snapshot: ${snapshotTime}  |  Provider: ${providerName}`,
+    `Tools called: ${toolsSummary}`,
+  ];
+  if (!isError(ctx.system)) {
+    const s = ctx.system as SystemMetrics;
+    lines.push(
+      `Key metrics: CPU ${s.cpu_percent.toFixed(1)}%  |  MEM ${s.mem_used_gb.toFixed(1)}/${s.mem_total_gb.toFixed(0)} GB  |  DISK ${s.disk_used_gb.toFixed(0)}/${s.disk_total_gb.toFixed(0)} GB`
+    );
+  }
+  return lines.join("\n");
+}
+
 export async function runAsk(question: string, provider: LLMProvider): Promise<void> {
   process.stdout.write("Collecting system state...\n\n");
   const ctx = await collectAll();
@@ -89,11 +108,17 @@ export async function runAsk(question: string, provider: LLMProvider): Promise<v
 
   process.stdout.write(`[${provider.name}] analyzing...\n\n`);
 
+  const toolsUsed: string[] = [];
   const result = await runAgentLoop(
     provider,
     [{ role: "user", content: `${contextBlock}\n\n---\n\n${question}` }],
-    { system: SYSTEM_PROMPT },
+    {
+      system: SYSTEM_PROMPT,
+      onToolCall: (name) => toolsUsed.push(name),
+    },
   );
 
   console.log(result);
+  console.log("");
+  console.log(formatEvidenceBlock(ctx, toolsUsed, provider.name));
 }
