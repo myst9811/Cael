@@ -38,6 +38,18 @@ test("resolveProvider falls back to config file when env unset", async () => {
   if (orig !== undefined) process.env.CAEL_PROVIDER = orig;
 });
 
+test("readConfig throws on malformed JSON instead of silently returning {}", async () => {
+  const path = "/tmp/cael-config-malformed.json";
+  await Bun.write(path, "{ this is not valid json }");
+  await expect(readConfig(path)).rejects.toThrow();
+});
+
+test("readConfig throws when file contains a non-object JSON value", async () => {
+  const path = "/tmp/cael-config-array.json";
+  await Bun.write(path, '["provider", "openai"]');
+  await expect(readConfig(path)).rejects.toThrow("not a JSON object");
+});
+
 test("resolveProvider returns null when neither env nor config set", async () => {
   const orig = process.env.CAEL_PROVIDER;
   delete process.env.CAEL_PROVIDER;

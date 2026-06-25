@@ -14,11 +14,11 @@ const DEFAULT_CONFIG_PATH = join(
 export async function readConfig(path = DEFAULT_CONFIG_PATH): Promise<CaelConfig> {
   const file = Bun.file(path);
   if (!(await file.exists())) return {};
-  try {
-    return (await file.json()) as CaelConfig;
-  } catch {
-    return {};
+  const parsed = await file.json(); // throws on malformed JSON — intentional, not swallowed
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Config file is not a JSON object: ${path}`);
   }
+  return parsed as CaelConfig;
 }
 
 export async function writeConfig(patch: Partial<CaelConfig>, path = DEFAULT_CONFIG_PATH): Promise<void> {
