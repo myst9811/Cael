@@ -74,7 +74,7 @@ export function buildChecks(configPath?: string): Check[] {
   ];
 }
 
-export async function runDoctor(configPath?: string): Promise<void> {
+export async function runDoctor(configPath?: string): Promise<boolean> {
   console.log("Cael doctor — checking dependencies and configuration\n");
   const checks = buildChecks(configPath);
   let allOk = true;
@@ -90,4 +90,5 @@ export async function runDoctor(configPath?: string): Promise<void> {
   } else {
     console.log("Some checks failed — see above for remediation steps.");
   }
+  return allOk;
 }

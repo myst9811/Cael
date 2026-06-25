@@ -110,7 +110,14 @@ async function repl(providerSpec: string): Promise<void> {
 
 if (import.meta.main) {
   const rawArgs = process.argv.slice(2);
-  const resolvedProvider = await resolveProvider();
+  let resolvedProvider: string | null = null;
+  try {
+    resolvedProvider = await resolveProvider();
+  } catch (e: unknown) {
+    console.error(`Error reading config: ${e instanceof Error ? e.message : String(e)}`);
+    console.error("Config file may be malformed. Run: cael config set provider <spec>");
+    process.exit(1);
+  }
 
   let parsed: ParsedArgs;
   try {
@@ -134,8 +141,8 @@ if (import.meta.main) {
   }
 
   if (subcommand === "doctor") {
-    await runDoctor().catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
-    process.exit(0);
+    const allOk = await runDoctor().catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
+    process.exit(allOk ? 0 : 1);
   }
 
   if (!providerSpec) {
