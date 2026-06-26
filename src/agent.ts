@@ -4,6 +4,7 @@ import type { LLMProvider, Message, ContentBlock, ChatOptions } from "./provider
 export interface AgentOptions {
   maxIterations?: number;
   system?: string;
+  onToolCall?: (name: string) => void;
 }
 
 export async function runAgentLoop(
@@ -36,6 +37,10 @@ export async function runAgentLoop(
       assistantContent.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
     }
     history.push({ role: "assistant", content: assistantContent });
+
+    for (const tc of response.toolCalls) {
+      options?.onToolCall?.(tc.name);
+    }
 
     const toolResults: ContentBlock[] = await Promise.all(
       response.toolCalls.map(async (tc): Promise<ContentBlock> => {

@@ -8,7 +8,7 @@ import type { LLMProvider, Message } from "../providers/types";
 import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
 import { LOGO, LOGO_ROWS } from "../assets/logo";
 import { runWatchAgentLoop } from "./watch-agent";
-import { watchTools } from "../tools";
+import { watchTools, watchExecuteToolWithTimeout } from "../tools";
 
 const REFRESH_MS = 5000;
 
@@ -158,7 +158,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
             state = { ...state, agentActivity: `⟳ calling ${name}...` };
             draw();
           },
-        }
+        },
+        10,
+        watchExecuteToolWithTimeout
       );
       conversationHistory = updatedHistory;
     } catch (err: unknown) {
