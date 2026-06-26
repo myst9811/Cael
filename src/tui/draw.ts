@@ -105,6 +105,11 @@ export interface FrameOptions {
   scrollOffset?: number; // 0 = pinned to bottom; omit or 0 for auto-scroll
   timestamp: string;
   statusError?: string | null;
+  // M2 additions (all optional for backward compat)
+  detailLines?: string[] | null;
+  compact?: boolean;
+  lastRefreshAt?: number;
+  panelErrors?: { system: boolean; docker: boolean; git: boolean };
 }
 
 function wrapWords(text: string, width: number): string[] {
@@ -133,7 +138,7 @@ export function buildFrame(opts: FrameOptions): string {
   const w2 = Math.floor(available / 3);
   const w3 = available - w1 - w2;
 
-  const PANEL_ROWS = 5; // fixed panel content rows
+  const PANEL_ROWS = opts.compact ? 3 : 5;
 
   let frame = "";
 
@@ -170,16 +175,22 @@ export function buildFrame(opts: FrameOptions): string {
     }
   }
 
+  // ── Detail row (container vital signs) ───────────────────────────────────
+  const detailLines = opts.detailLines ?? null;
+  if (detailLines !== null && detailLines.length > 0) {
+    frame += `${B.lj}${hline(innerW)}${B.rj}\n`;
+    for (const dl of detailLines) {
+      frame += `${B.v}${pad(dl, innerW)}${B.v}\n`;
+    }
+  }
+
   // ── Status / query / AI response ─────────────────────────────────────────
-  // Compute how many rows the status section can fill.
-  //   Fixed rows (excl. status section + bottom border):
-  //     top border(1) + header(1) + panel-sep(1) + panels(5) + alert-sep(1) + alert-rows(A) + status-sep(1) = 11 + A
-  //   Bottom border: 1
-  //   So status rows = opts.rows - 12 - alertRows
+  // Row budget: fixed overhead is 11 rows + alertRows + detailRowCount + (PANEL_ROWS - 5)
+  //   When compact (PANEL_ROWS=3): saves 2 panel rows → those flow into status section.
+  //   When detail visible: detail rows + 1 separator consumed from status budget.
   const alertRows = opts.alerts.length === 0 ? 1 : Math.min(opts.alerts.length, 2);
-  // statusSectionRows: total rows in the status section (content rows + 1 bottom-anchor row).
-  // All three modes produce exactly this many rows so the frame height is always opts.rows.
-  const statusSectionRows = Math.max(3, opts.rows - 12 - alertRows);
+  const detailRowCount = detailLines && detailLines.length > 0 ? detailLines.length + 1 : 0;
+  const statusSectionRows = Math.max(3, opts.rows - 12 - alertRows - detailRowCount - (PANEL_ROWS - 5));
   const contentRows = statusSectionRows - 1; // last row is always the anchor (dismiss/prompt/hint)
 
   frame += `${B.lj}${hline(innerW)}${B.rj}\n`;

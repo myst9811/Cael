@@ -52,3 +52,38 @@ test("buildFrame same line count with scrollOffset > 0 as scrollOffset 0", () =>
   const scrolledUp = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse, scrollOffset: 5 });
   expect(atBottom.split("\n").length).toBe(scrolledUp.split("\n").length);
 });
+
+test("buildFrame compact: panel area shows only 3 rows of content (row 4 hidden)", () => {
+  // Compact PANEL_ROWS=3 means content rows 4 and 5 are not rendered in the panel area.
+  // Total frame height stays the same — saved rows go to the status section.
+  const sys5 = ["SYSTEM", " row1", " row2", " row3", " row4", " row5"];
+  const compact  = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", compact: true,  lastRefreshAt: 0, systemLines: sys5 });
+  const expanded = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", compact: false, lastRefreshAt: 0, systemLines: sys5 });
+  expect(compact).not.toContain(" row4");
+  expect(expanded).toContain(" row4");
+});
+
+test("buildFrame with detailLines null: no detail section", () => {
+  const frame = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", detailLines: null, lastRefreshAt: 0 });
+  expect(frame).not.toContain("image:");
+});
+
+test("buildFrame with detailLines set: detail content appears", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    detailLines: ["  nginx  RUNNING  started 2h ago", "  image: nginx:1.25  ports: none"],
+    lastRefreshAt: 0,
+  });
+  expect(frame).toContain("nginx:1.25");
+});
+
+test("buildFrame with detailLines: same total height, detail content replaces status rows", () => {
+  const without = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", detailLines: null, lastRefreshAt: 0 });
+  const withDetail = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    detailLines: ["  row one", "  row two"],
+    lastRefreshAt: 0,
+  });
+  // Total line count stays the same — detail rows are absorbed from the status section budget
+  expect(without.split("\n").length).toBe(withDetail.split("\n").length);
+});
