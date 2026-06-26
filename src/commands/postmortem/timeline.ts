@@ -9,8 +9,10 @@ export interface TimelineEvent {
 }
 
 const GIT_LINE_RE = /^([0-9a-f]{7,40})\s+(\S+)\s+(.+)$/;
-const LOG_TS_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/;
-const STRIP_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?\s*/;
+// Capture the full ISO timestamp including optional fractional seconds and Z/offset
+// so log events sort consistently with git events that include +00:00 offset.
+const LOG_TS_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)/;
+const STRIP_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\s*/;
 const PID_RE = /\[\d+\]\s*/g;
 const ERROR_RE = /\b(error|fatal|critical)\b/i;
 const WARN_RE = /\b(warn(?:ing)?)\b/i;
@@ -49,7 +51,8 @@ export function extractTimeline(ctx: PostmortemContext): TimelineEvent[] {
       const existing = buckets.get(prefix);
       if (existing) {
         existing.count++;
-        if (ts) existing.ts = ts;
+        // Preserve first (earliest) timestamp — do not overwrite with later duplicates
+        if (!existing.ts && ts) existing.ts = ts;
         if (level === "error") existing.level = "error";
         else if (level === "warn" && existing.level !== "error") existing.level = "warn";
       } else {

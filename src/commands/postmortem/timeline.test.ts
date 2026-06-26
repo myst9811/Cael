@@ -68,6 +68,8 @@ test("extractTimeline: deduplicates repeated log lines into one entry", () => {
   const logEvents = events.filter(e => e.source === "log");
   expect(logEvents.length).toBe(1);
   expect(logEvents[0]!.message).toContain("×3");
+  // Grouped event should be anchored to the FIRST occurrence's timestamp
+  expect(logEvents[0]!.timestamp).toContain("10:00:01");
 });
 
 test("extractTimeline: untimed events appear after all timed events", () => {
