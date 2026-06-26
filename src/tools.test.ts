@@ -44,7 +44,6 @@ test("tools (full set) still includes write_file", () => {
   expect(tools.find(t => t.name === "write_file")).toBeDefined();
 });
 
-<<<<<<< HEAD
 test("run_shell output has secrets redacted", async () => {
   const tmpFile = "/tmp/cael-redact-test.env";
   await Bun.write(tmpFile, "API_KEY=sk-super-secret-value\nPORT=8080\n");

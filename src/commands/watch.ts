@@ -36,7 +36,7 @@ function formatSystemPrompt(ctx: CollectedContext): string {
       : "not a git repo";
 
   return `You are Cael, a DevOps agent. Answer in 2-3 concise sentences based on the live snapshot.
-Never fabricate — use the provided data.
+Never fabricate — use the provided data. For deeper investigation use: get_docker_log_patterns, get_listening_ports, get_process_tree, get_runtime_services.
 
 Snapshot (${ctx.timestamp}):
 System: ${sys}
