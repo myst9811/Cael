@@ -15,14 +15,32 @@ export function parseUnpushedCount(output: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+export function parseDirtyFilePaths(output: string): string[] {
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .filter(l => !l.startsWith("??"))
+    .map(l => l.slice(3).trim());
+}
+
+export function parseBehindCount(output: string): number | null {
+  const trimmed = output.trim();
+  if (!trimmed || trimmed === "no-upstream") return null;
+  const n = parseInt(trimmed);
+  return isNaN(n) ? null : n;
+}
+
 export async function getGitStatus(): Promise<GitStatus> {
   const isRepo = await $`git rev-parse --is-inside-work-tree`.quiet().nothrow();
   if (isRepo.exitCode !== 0) return { is_git_repo: false };
 
-  const [branch, statusOut, unpushedOut, stashOut, logOut] = await Promise.all([
+  const [branch, statusOut, unpushedOut, behindOut, stashOut, logOut] = await Promise.all([
     $`git branch --show-current`.quiet().nothrow().then(r => r.stdout.toString().trim()),
     $`git status --short`.quiet().nothrow().then(r => r.stdout.toString()),
     $`git rev-list "@{u}.." --count`.quiet().nothrow().then(r =>
+      r.exitCode === 0 ? r.stdout.toString().trim() : "no-upstream"
+    ),
+    $`git rev-list "..@{u}" --count`.quiet().nothrow().then(r =>
       r.exitCode === 0 ? r.stdout.toString().trim() : "no-upstream"
     ),
     $`git stash list`.quiet().nothrow().then(r =>
@@ -32,7 +50,9 @@ export async function getGitStatus(): Promise<GitStatus> {
   ]);
 
   const { dirty, untracked } = parseGitShortStatus(statusOut);
+  const dirty_file_paths = parseDirtyFilePaths(statusOut);
   const unpushed = parseUnpushedCount(unpushedOut);
+  const behind = parseBehindCount(behindOut);
   const pipeIdx = logOut.lastIndexOf("|");
   const lastMsg = pipeIdx > -1 ? logOut.slice(0, pipeIdx) : logOut;
   const lastHash = pipeIdx > -1 ? logOut.slice(pipeIdx + 1) : undefined;
@@ -41,8 +61,10 @@ export async function getGitStatus(): Promise<GitStatus> {
     is_git_repo: true,
     branch: branch || undefined,
     dirty_files: dirty,
+    dirty_file_paths,
     untracked_files: untracked,
     unpushed_commits: unpushed,
+    behind_commits: behind,
     stash_count: stashOut,
     last_commit_message: lastMsg || undefined,
     last_commit_hash: lastHash || undefined,

@@ -46,7 +46,9 @@ export interface GitStatus {
   is_git_repo: boolean;
   branch?: string;
   dirty_files?: number;
+  dirty_file_paths?: string[];
   unpushed_commits?: number | null;
+  behind_commits?: number | null;
   untracked_files?: number;
   stash_count?: number;
   last_commit_message?: string;

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { parseGitShortStatus, parseUnpushedCount } from "./git";
+import { parseGitShortStatus, parseUnpushedCount, parseDirtyFilePaths, parseBehindCount } from "./git";
 
 test("parseGitShortStatus: counts dirty files (modified, added, deleted)", () => {
   const output = " M src/foo.ts\nM  src/bar.ts\nA  src/new.ts\n D src/old.ts\n";
@@ -44,4 +44,28 @@ test("parseUnpushedCount: returns null for empty string (git error)", () => {
 
 test("parseUnpushedCount: returns null for non-numeric output", () => {
   expect(parseUnpushedCount("fatal: no upstream")).toBeNull();
+});
+
+test("parseDirtyFilePaths: returns paths for non-untracked dirty lines", () => {
+  const output = " M src/foo.ts\nM  src/bar.ts\nA  src/new.ts\n?? untracked.ts\n";
+  expect(parseDirtyFilePaths(output)).toEqual(["src/foo.ts", "src/bar.ts", "src/new.ts"]);
+});
+
+test("parseDirtyFilePaths: empty output returns empty array", () => {
+  expect(parseDirtyFilePaths("")).toEqual([]);
+});
+
+test("parseDirtyFilePaths: excludes untracked files", () => {
+  expect(parseDirtyFilePaths("?? foo.ts\n?? bar.ts\n")).toEqual([]);
+});
+
+test("parseBehindCount: parses numeric output", () => {
+  expect(parseBehindCount("3")).toBe(3);
+  expect(parseBehindCount("0")).toBe(0);
+});
+
+test("parseBehindCount: returns null for no upstream", () => {
+  expect(parseBehindCount("no-upstream")).toBeNull();
+  expect(parseBehindCount("")).toBeNull();
+  expect(parseBehindCount("fatal: no upstream")).toBeNull();
 });
