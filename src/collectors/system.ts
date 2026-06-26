@@ -92,6 +92,26 @@ export function parseDisk(dfOutput: string): { used_gb: number; total_gb: number
   return { total_gb: totalKb / GB, used_gb: usedKb / GB, percent };
 }
 
+export function parseDiskInodes(dfOutput: string, platform: string): number | undefined {
+  const lines = dfOutput.trim().split("\n").filter(l => l.trim());
+  const dataLine = lines.find(l => !l.trim().startsWith("Filesystem"));
+  if (!dataLine) return undefined;
+  const fields = dataLine.trim().split(/\s+/);
+  if (platform === "darwin") {
+    // macOS df -k: Filesystem 1K-blocks Used Avail Capacity iused ifree %iused Mounted
+    const pct = fields[7];
+    if (!pct) return undefined;
+    const val = parseInt(pct);
+    return isNaN(val) ? undefined : val;
+  } else {
+    // Linux df -i: Filesystem Inodes IUsed IFree IUse% Mounted
+    const pct = fields[4];
+    if (!pct) return undefined;
+    const val = parseInt(pct);
+    return isNaN(val) ? undefined : val;
+  }
+}
+
 export async function getSystemMetrics(): Promise<SystemMetrics> {
   const platform = process.platform;
   const diskPromise = $`df -k .`.quiet().text();
@@ -129,6 +149,17 @@ export async function getSystemMetrics(): Promise<SystemMetrics> {
   const disk = parseDisk(diskOut);
   const la = loadavg();
 
+  // Inodes: macOS inode % is already in df -k output; Linux needs a separate df -i call
+  let disk_inode_percent: number | undefined;
+  if (platform === "darwin") {
+    disk_inode_percent = parseDiskInodes(diskOut, platform);
+  } else {
+    try {
+      const dfInodeOut = await $`df -i .`.quiet().nothrow().text();
+      disk_inode_percent = parseDiskInodes(dfInodeOut, platform);
+    } catch { /* non-fatal */ }
+  }
+
   return {
     cpu_percent,
     mem_used_gb,
@@ -137,6 +168,7 @@ export async function getSystemMetrics(): Promise<SystemMetrics> {
     disk_used_gb: disk.used_gb,
     disk_total_gb: disk.total_gb,
     disk_percent: disk.percent,
+    disk_inode_percent,
     load_avg: [la[0] ?? 0, la[1] ?? 0, la[2] ?? 0],
   };
 }

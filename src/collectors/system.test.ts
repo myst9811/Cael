@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { parseMacOSMemory, parseLinuxMemory, parseMacOSCpu, parseLinuxCpu, parseDisk } from "./system";
+import { parseMacOSMemory, parseLinuxMemory, parseMacOSCpu, parseLinuxCpu, parseDisk, parseDiskInodes } from "./system";
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, "__fixtures__", name), "utf-8");
 
@@ -84,4 +84,21 @@ test("parseDisk: returns zeros for empty output", () => {
   expect(result.total_gb).toBe(0);
   expect(result.used_gb).toBe(0);
   expect(result.percent).toBe(0);
+});
+
+test("parseDiskInodes: macOS extracts %iused from df -k output", () => {
+  expect(parseDiskInodes(fixture("macos-df-inodes.txt"), "darwin")).toBe(72);
+});
+
+test("parseDiskInodes: Linux extracts IUse% from df -i output", () => {
+  expect(parseDiskInodes(fixture("linux-df-inodes.txt"), "linux")).toBe(3);
+});
+
+test("parseDiskInodes: returns undefined for empty input", () => {
+  expect(parseDiskInodes("", "darwin")).toBeUndefined();
+});
+
+test("parseDiskInodes: returns undefined when header-only", () => {
+  const headerOnly = "Filesystem   1024-blocks      Used Available Capacity iused ifree %iused Mounted on\n";
+  expect(parseDiskInodes(headerOnly, "darwin")).toBeUndefined();
 });

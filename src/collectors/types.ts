@@ -6,6 +6,7 @@ export interface SystemMetrics {
   disk_used_gb: number;
   disk_total_gb: number;
   disk_percent: number;
+  disk_inode_percent?: number;
   load_avg: [number, number, number];
 }
 
@@ -63,6 +64,61 @@ export interface ProcessEntry {
 
 export interface ProcessList {
   processes: ProcessEntry[];
+}
+
+export interface PortEntry {
+  port: number;
+  protocol: "tcp" | "udp";
+  address: string;
+  pid?: number;
+  process_name?: string;
+}
+
+export interface NetworkPorts {
+  ports: PortEntry[];
+}
+
+export interface ProcessNode {
+  pid: number;
+  ppid: number;
+  name: string;
+  cpu_percent: number;
+  mem_mb: number;
+  children: ProcessNode[];
+}
+
+export interface ProcessTree {
+  roots: ProcessNode[];
+}
+
+export interface ServiceEntry {
+  name: string;
+  source: "systemd" | "launchctl" | "docker-compose";
+  status: "running" | "stopped" | "unknown";
+  description?: string;
+}
+
+export interface RuntimeServices {
+  services: ServiceEntry[];
+  unavailable_sources: string[];
+}
+
+export interface LogPattern {
+  pattern: string;
+  count: number;
+  first_seen?: string;
+  last_seen?: string;
+  level?: "error" | "warn" | "info" | "unknown";
+}
+
+export interface DockerLogPatterns {
+  container: string;
+  total_lines: number;
+  lines_analyzed: number;
+  truncated: boolean;
+  error_count: number;
+  warn_count: number;
+  patterns: LogPattern[];
 }
 
 export type CollectorError = { error: string };

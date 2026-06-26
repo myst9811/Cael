@@ -7,6 +7,10 @@ import { getDockerStatus, getDockerLogs } from "./collectors/docker";
 import { getGitStatus } from "./collectors/git";
 import { getProcessList } from "./collectors/process";
 import { redactSecrets } from "./redact";
+import { getListeningPorts } from "./collectors/network";
+import { getProcessTree } from "./collectors/process-tree";
+import { getRuntimeServices } from "./collectors/services";
+import { getDockerLogPatterns } from "./collectors/log-patterns";
 
 // ── Path safety ───────────────────────────────────────────────────────────────
 // Restrict all file/dir operations to the process working directory to prevent
@@ -226,6 +230,48 @@ export const collectorTools: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: "get_listening_ports",
+    description: "List all TCP and UDP ports currently listening, with owning process name and PID",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_process_tree",
+    description: "Get the process tree showing parent/child relationships. Without pid returns top 50 roots to depth 3. Pass pid to get a specific subtree.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pid: { type: "number", description: "Root PID for subtree (omit for top-level tree)" },
+        max_depth: { type: "number", description: "Maximum depth to expand (default 3)" },
+        limit: { type: "number", description: "Max root processes when pid is omitted (default 50)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_runtime_services",
+    description: "List running services from systemd, launchctl, and docker-compose",
+    input_schema: {
+      type: "object",
+      properties: {
+        source: { type: "string", enum: ["systemd", "launchctl", "docker-compose", "all"], description: "Filter by source (default: all)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_docker_log_patterns",
+    description: "Analyse a container's recent logs for recurring error patterns and frequency",
+    input_schema: {
+      type: "object",
+      properties: {
+        container: { type: "string", description: "Container name or ID" },
+        lines: { type: "number", description: "Lines to analyse (default 200)" },
+        since: { type: "string", description: "Only logs since this duration (e.g. 30m, 2h) or ISO timestamp" },
+      },
+      required: ["container"],
+    },
+  },
 ];
 
 export const tools: ToolDefinition[] = [...codeTools, ...collectorTools];
@@ -346,6 +392,41 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
       const limit = limitRaw !== undefined && Number.isFinite(limitRaw) ? limitRaw : undefined;
       const pl = await getProcessList(sortBy, limit);
       return JSON.stringify(pl, null, 2);
+    }
+
+    case "get_listening_ports": {
+      const result = await getListeningPorts();
+      return redactSecrets(JSON.stringify(result, null, 2));
+    }
+
+    case "get_process_tree": {
+      const pid = input.pid !== undefined ? Number(input.pid) : undefined;
+      const maxDepth = input.max_depth !== undefined ? Number(input.max_depth) : 3;
+      const treeLimit = input.limit !== undefined ? Number(input.limit) : 50;
+      const result = await getProcessTree(
+        pid !== undefined && Number.isFinite(pid) ? pid : undefined,
+        Number.isFinite(maxDepth) ? maxDepth : 3,
+        Number.isFinite(treeLimit) ? treeLimit : 50,
+      );
+      return redactSecrets(JSON.stringify(result, null, 2));
+    }
+
+    case "get_runtime_services": {
+      const source = input.source as "systemd" | "launchctl" | "docker-compose" | "all" | undefined;
+      const validSources = new Set(["systemd", "launchctl", "docker-compose", "all"]);
+      const result = await getRuntimeServices(validSources.has(source ?? "") ? source : "all");
+      return redactSecrets(JSON.stringify(result, null, 2));
+    }
+
+    case "get_docker_log_patterns": {
+      if (!input.container) return "Error: container is required";
+      const linesRaw = input.lines !== undefined ? Number(input.lines) : undefined;
+      const result = await getDockerLogPatterns(
+        String(input.container),
+        linesRaw !== undefined && Number.isFinite(linesRaw) ? linesRaw : undefined,
+        input.since !== undefined ? String(input.since) : undefined,
+      );
+      return redactSecrets(JSON.stringify(result, null, 2));
     }
   }
 

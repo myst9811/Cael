@@ -88,6 +88,7 @@ test("buildFrame with detailLines: same total height, detail content replaces st
   expect(without.split("\n").length).toBe(withDetail.split("\n").length);
 });
 
+
 function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, "");
 }
@@ -129,4 +130,30 @@ test("buildFrame: stale timestamp shows age annotation", () => {
     panelErrors: { system: false, docker: false, git: false },
   });
   expect(stripAnsi(frame)).toMatch(/\d+s old/);
+});
+
+test("generateAlerts: inode critical alert when disk_inode_percent > 95", () => {
+  const system = {
+    cpu_percent: 10, mem_percent: 20,
+    mem_used_gb: 3, mem_total_gb: 16,
+    disk_used_gb: 100, disk_total_gb: 200, disk_percent: 50,
+    disk_inode_percent: 97,
+    load_avg: [0.5, 0.5, 0.5] as [number, number, number],
+  };
+  const docker = { available: false, containers: [] };
+  const alerts = generateAlerts(system, docker);
+  expect(alerts.map(stripAnsi).some(a => a.includes("INODES CRITICAL"))).toBe(true);
+});
+
+test("generateAlerts: inode warning alert when disk_inode_percent is 87", () => {
+  const system = {
+    cpu_percent: 10, mem_percent: 20,
+    mem_used_gb: 3, mem_total_gb: 16,
+    disk_used_gb: 100, disk_total_gb: 200, disk_percent: 50,
+    disk_inode_percent: 87,
+    load_avg: [0.5, 0.5, 0.5] as [number, number, number],
+  };
+  const docker = { available: false, containers: [] };
+  const alerts = generateAlerts(system, docker);
+  expect(alerts.map(stripAnsi).some(a => a.includes("Inodes") && a.includes("87%"))).toBe(true);
 });

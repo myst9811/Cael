@@ -74,6 +74,10 @@ export function generateAlerts(
     else if (m.disk_percent > 85) warnings.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
     if (m.cpu_percent > 90) warnings.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
     if (m.mem_percent > 90) warnings.push(`${"\x1b[33m"}⚠ Memory ${Math.min(m.mem_percent, 100).toFixed(0)}% used${A.reset}`);
+    if (m.disk_inode_percent !== undefined) {
+      if (m.disk_inode_percent > 95) critical.push(`${"\x1b[31m"}✕ INODES CRITICAL ${m.disk_inode_percent.toFixed(0)}%${A.reset}`);
+      else if (m.disk_inode_percent > 85) warnings.push(`${"\x1b[33m"}⚠ Inodes ${m.disk_inode_percent.toFixed(0)}% used${A.reset}`);
+    }
   }
   if (!("error" in docker)) {
     const d = docker as DockerStatus;
