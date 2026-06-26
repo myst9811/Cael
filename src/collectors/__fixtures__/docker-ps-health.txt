@@ -1,0 +1,4 @@
+api	running	Up 3 days (healthy)	nginx:latest	0.0.0.0:80->80/tcp
+db	running	Up 1 hour (unhealthy)	postgres:15	5432/tcp
+cache	running	Up 5 minutes (health: starting)	redis:7
+worker	exited	Exited (1) 4 minutes ago	myapp:latest

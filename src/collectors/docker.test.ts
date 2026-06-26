@@ -50,3 +50,30 @@ test("parseDockerPs: handles container with no ports", () => {
   const worker = result.find(c => c.name === "worker")!;
   expect(worker.ports).toHaveLength(0);
 });
+
+test("parseDockerPs: parses healthy container", () => {
+  const result = parseDockerPs(fixture("docker-ps-health.txt"));
+  expect(result.find(c => c.name === "api")!.health).toBe("healthy");
+});
+
+test("parseDockerPs: parses unhealthy container", () => {
+  const result = parseDockerPs(fixture("docker-ps-health.txt"));
+  expect(result.find(c => c.name === "db")!.health).toBe("unhealthy");
+});
+
+test("parseDockerPs: parses health:starting container", () => {
+  const result = parseDockerPs(fixture("docker-ps-health.txt"));
+  expect(result.find(c => c.name === "cache")!.health).toBe("starting");
+});
+
+test("parseDockerPs: exited container with no health indicator gets none", () => {
+  const result = parseDockerPs(fixture("docker-ps-health.txt"));
+  expect(result.find(c => c.name === "worker")!.health).toBe("none");
+});
+
+test("parseDockerPs: containers without health parens get none", () => {
+  const result = parseDockerPs(fixture("docker-ps-running.txt"));
+  for (const c of result) {
+    expect(c.health).toBe("none");
+  }
+});
