@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { buildFrame } from "./draw";
+import { buildFrame, generateAlerts } from "./draw";
 
 const BASE_OPTS = {
   cols: 80,
@@ -86,4 +86,47 @@ test("buildFrame with detailLines: same total height, detail content replaces st
   });
   // Total line count stays the same — detail rows are absorbed from the status section budget
   expect(without.split("\n").length).toBe(withDetail.split("\n").length);
+});
+
+function stripAnsi(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+test("generateAlerts: critical (✕) appears before warnings (⚠)", () => {
+  const system = {
+    cpu_percent: 95, mem_percent: 91,
+    mem_used_gb: 14.5, mem_total_gb: 16,
+    disk_used_gb: 195, disk_total_gb: 200, disk_percent: 98,
+    load_avg: [1, 1, 1] as [number, number, number],
+  };
+  const docker = { available: false, containers: [], error: "not running" };
+  const alerts = generateAlerts(system, docker);
+  expect(stripAnsi(alerts[0] ?? "")).toContain("DISK CRITICAL");
+});
+
+test("buildFrame: fresh panels contain green dot ●", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now(),
+    panelErrors: { system: false, docker: false, git: false },
+  });
+  expect(frame).toContain("●");
+});
+
+test("buildFrame: errored panel title contains red dot ○", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now(),
+    panelErrors: { system: true, docker: false, git: false },
+  });
+  expect(frame).toContain("○");
+});
+
+test("buildFrame: stale timestamp shows age annotation", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now() - 15_000,
+    panelErrors: { system: false, docker: false, git: false },
+  });
+  expect(stripAnsi(frame)).toMatch(/\d+s old/);
 });

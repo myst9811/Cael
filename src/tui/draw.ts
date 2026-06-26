@@ -66,27 +66,36 @@ export function generateAlerts(
   system: SystemMetrics | CollectorError,
   docker: DockerStatus | CollectorError,
 ): string[] {
-  const alerts: string[] = [];
+  const critical: string[] = [];
+  const warnings: string[] = [];
   if (!("error" in system)) {
     const m = system as SystemMetrics;
-    if (m.disk_percent > 95) alerts.push(`${"\x1b[31m"}✕ DISK CRITICAL ${m.disk_percent.toFixed(0)}%${A.reset}`);
-    else if (m.disk_percent > 85) alerts.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
-    if (m.cpu_percent > 90) alerts.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
-    if (m.mem_percent > 90) alerts.push(`${"\x1b[33m"}⚠ Memory ${Math.min(m.mem_percent, 100).toFixed(0)}% used${A.reset}`);
+    if (m.disk_percent > 95) critical.push(`${"\x1b[31m"}✕ DISK CRITICAL ${m.disk_percent.toFixed(0)}%${A.reset}`);
+    else if (m.disk_percent > 85) warnings.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
+    if (m.cpu_percent > 90) warnings.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
+    if (m.mem_percent > 90) warnings.push(`${"\x1b[33m"}⚠ Memory ${Math.min(m.mem_percent, 100).toFixed(0)}% used${A.reset}`);
   }
   if (!("error" in docker)) {
     const d = docker as DockerStatus;
     if (d.available) {
       for (const c of d.containers) {
         if (c.status === "restarting") {
-          alerts.push(`${"\x1b[33m"}↻ ${c.name} is restarting${A.reset}`);
+          warnings.push(`${"\x1b[33m"}↻ ${c.name} is restarting${A.reset}`);
         } else if (c.status === "exited" && c.exit_code !== 0) {
-          alerts.push(`${"\x1b[31m"}✕ ${c.name} exited (code ${c.exit_code ?? "?"})${A.reset}`);
+          critical.push(`${"\x1b[31m"}✕ ${c.name} exited (code ${c.exit_code ?? "?"})${A.reset}`);
         }
       }
     }
   }
-  return alerts;
+  return [...critical, ...warnings];
+}
+
+function freshnessDot(lastRefreshAt: number, isError: boolean): string {
+  if (isError || lastRefreshAt === 0) return `${A.red}○${A.reset}`;
+  const ageMs = Date.now() - lastRefreshAt;
+  if (ageMs > 30_000) return `${A.red}○${A.reset}`;
+  if (ageMs > 10_000) return `${A.yellow}◐${A.reset}`;
+  return `${A.green}●${A.reset}`;
 }
 
 // ── Frame builder ─────────────────────────────────────────────────────────────
@@ -144,8 +153,15 @@ export function buildFrame(opts: FrameOptions): string {
 
   // ── Top border + header ───────────────────────────────────────────────────
   const title = `${A.bold}${A.brightGreen} cael watch ${A.reset}`;
-  const ts = `${A.dim}${opts.timestamp}${A.reset}`;
-  const hint = `${A.dim}[/] ask  [q] quit${A.reset}`;
+  const lra = opts.lastRefreshAt ?? 0;
+  const ageMs = lra > 0 ? Date.now() - lra : 0;
+  const ageAnnotation = ageMs > 30_000
+    ? ` ${A.red}(${Math.floor(ageMs / 1000)}s old)${A.reset}`
+    : ageMs > 10_000
+    ? ` ${A.yellow}(${Math.floor(ageMs / 1000)}s old)${A.reset}`
+    : "";
+  const ts = `${A.dim}${opts.timestamp}${A.reset}${ageAnnotation}`;
+  const hint = `${A.dim}[/] ask  [↑↓] select  [z] compact  [q] quit${A.reset}`;
   const headerContent = `${title}  ${ts}  ${hint}`;
   frame += `${B.tl}${hline(innerW)}${B.tr}\n`;
   frame += `${B.v}${pad(headerContent, innerW)}${B.v}\n`;
@@ -156,11 +172,18 @@ export function buildFrame(opts: FrameOptions): string {
   const sys = opts.systemLines;
   const doc = opts.dockerLines;
   const git = opts.gitLines;
+  const pe = opts.panelErrors;
+  const sysDot = pe ? freshnessDot(lra, pe.system) : freshnessDot(lra, false);
+  const dkDot  = pe ? freshnessDot(lra, pe.docker) : freshnessDot(lra, false);
+  const gtDot  = pe ? freshnessDot(lra, pe.git)    : freshnessDot(lra, false);
 
   for (let i = 0; i < PANEL_ROWS; i++) {
-    const l = (i < sys.length ? sys[i] : undefined) ?? "";
-    const m = (i < doc.length ? doc[i] : undefined) ?? "";
-    const r = (i < git.length ? git[i] : undefined) ?? "";
+    const lRaw = (i < sys.length ? sys[i] : undefined) ?? "";
+    const mRaw = (i < doc.length ? doc[i] : undefined) ?? "";
+    const rRaw = (i < git.length ? git[i] : undefined) ?? "";
+    const l = i === 0 ? `${lRaw} ${sysDot}` : lRaw;
+    const m = i === 0 ? `${mRaw} ${dkDot}`  : mRaw;
+    const r = i === 0 ? `${rRaw} ${gtDot}`  : rRaw;
     frame += `${B.v}${pad(l, w1)}${B.v}${pad(m, w2)}${B.v}${pad(r, w3)}${B.v}\n`;
   }
 
