@@ -36,13 +36,14 @@ export interface DeployPolicy {
   caution_threshold: number;  // default 72  — raw score out of 120 for CAUTION verdict (60%)
 }
 
-// Total score is out of 120: 6 checks × 20pts each.
-// go_threshold=96 means ≥80% required for GO; caution_threshold=72 means ≥60% for CAUTION.
+// Total score is out of 140: 7 checks × 20pts each
+// (cpu, memory, disk, docker, git, inodes, branch_upstream).
+// go_threshold=112 means ≥80% required for GO; caution_threshold=84 means ≥60% for CAUTION.
 export const DEFAULT_POLICY: DeployPolicy = {
   cpu_warn: 70, cpu_crit: 85,
   mem_warn: 80, mem_crit: 90,
   disk_warn: 85, disk_crit: 95,
-  go_threshold: 96, caution_threshold: 72,
+  go_threshold: 112, caution_threshold: 84,
 };
 
 export async function loadDeployPolicy(): Promise<DeployPolicy>
@@ -90,7 +91,7 @@ Lockfile detection requires filenames, not just a count. `GitStatus` gains `dirt
 
 `ScoreResult.hard_block` gains `"inode_critical"` as a new variant (triggered when `disk_inode_percent > 95`).
 
-Total score is out of 120 (6 checks × 20pts). `go_threshold` and `caution_threshold` in the policy are raw scores. Default `go_threshold: 96` (80% of 120) and `caution_threshold: 72` (60% of 120).
+Total score is out of **140** (7 checks × 20pts: cpu, memory, disk, docker, git, inodes, branch_upstream). Default `go_threshold: 112` (80% of 140) and `caution_threshold: 84` (60% of 140).
 
 **`src/commands/deploy-check/formatter.ts`** — add `itemLine("Inodes", result.items.inodes)` to `formatScoreTable`. Add `"inode_critical"` to the hard-block label map.
 
