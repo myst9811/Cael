@@ -47,8 +47,7 @@ ${template}
 INCIDENT DATA:
 ${context}`;
 
-export async function runPostmortem(rawArgs: string, provider: LLMProvider): Promise<void> {
-  const args = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
+export async function runPostmortem(args: string[], provider: LLMProvider): Promise<void> {
   const flags = parsePostmortemFlags(args);
 
   let since: string | undefined;

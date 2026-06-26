@@ -54,6 +54,7 @@ export interface ParsedArgs {
   prompt?: string;
   help?: boolean;
   configArgs?: string[];
+  postmortemArgs?: string[];
 }
 
 export function parseArgs(args: string[], resolvedProvider: string | null): ParsedArgs {
@@ -80,6 +81,10 @@ export function parseArgs(args: string[], resolvedProvider: string | null): Pars
 
   if (first === "doctor") {
     return { provider, subcommand: "doctor" };
+  }
+
+  if (first === "postmortem") {
+    return { provider, subcommand: "postmortem", postmortemArgs: remaining.slice(1) };
   }
 
   if (first && (SUBCOMMANDS as readonly string[]).includes(first)) {
@@ -142,7 +147,7 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  const { provider: providerSpec, subcommand, prompt, configArgs } = parsed;
+  const { provider: providerSpec, subcommand, prompt, configArgs, postmortemArgs } = parsed;
 
   if (subcommand === "config") {
     await runConfig(configArgs ?? []).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
@@ -183,7 +188,7 @@ if (import.meta.main) {
   } else if (subcommand === "deploy-check") {
     runDeployCheck(provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (subcommand === "postmortem") {
-    runPostmortem(prompt ?? "", provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
+    runPostmortem(postmortemArgs ?? [], provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (subcommand === "watch") {
     runWatch(provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (prompt) {
