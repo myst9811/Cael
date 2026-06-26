@@ -13,6 +13,7 @@ export interface DeployInput {
     containers: Array<{ name: string; status: "running" | "exited" | "paused" | "restarting"; exit_code?: number }>;
   };
   git: {
+    is_git_repo?: boolean;    // false = not a git repo; git score returns neutral
     dirty_files?: number;
     dirty_file_paths?: string[];
     unpushed_commits?: number | null;
@@ -55,9 +56,9 @@ export function calculateDeployScore(input: DeployInput, policy: DeployPolicy = 
   const total = cpu.score + memory.score + disk.score + docker.score + git.score + inodes.score + branch_upstream.score;
 
   let hard_block: ScoreResult["hard_block"];
-  if (input.disk_percent > 95) hard_block = "disk_full";
+  if (input.disk_percent > policy.disk_crit) hard_block = "disk_full";
   else if (input.docker.containers.some(c => c.status === "restarting")) hard_block = "docker_restarting";
-  else if (input.disk_inode_percent !== undefined && input.disk_inode_percent > 95) hard_block = "inode_critical";
+  else if (input.disk_inode_percent !== undefined && input.disk_inode_percent > policy.disk_crit) hard_block = "inode_critical";
 
   let go_no_go: ScoreResult["go_no_go"];
   if (hard_block) go_no_go = "NO-GO";
@@ -124,6 +125,9 @@ function scoreDocker(docker: DeployInput["docker"]): CheckItem {
 }
 
 function scoreGit(git: DeployInput["git"]): CheckItem {
+  // Not a git repo — no penalty; git checks don't apply
+  if (git.is_git_repo === false) return { score: 20, max: 20, label: "not a git repo" };
+
   const dirty = git.dirty_files ?? 0;
   const paths = git.dirty_file_paths ?? [];
   const hasLockfile = paths.some(p => LOCKFILES.has(p.split("/").pop() ?? ""));

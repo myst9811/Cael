@@ -146,6 +146,12 @@ test("clean + no unpushed: full 20 pts", () => {
   expect(calculateDeployScore(perfect).items.git.score).toBe(20);
 });
 
+test("not a git repo: full 20 pts (no penalty)", () => {
+  const r = calculateDeployScore({ ...perfect, git: { is_git_repo: false } });
+  expect(r.items.git.score).toBe(20);
+  expect(r.items.git.label).toContain("not a git repo");
+});
+
 test("dirty files (non-lockfile): 10 pts", () => {
   const r = calculateDeployScore({ ...perfect, git: { ...perfect.git, dirty_files: 2, dirty_file_paths: ["src/app.ts"], unpushed_commits: 0 } });
   expect(r.items.git.score).toBe(10);
@@ -208,4 +214,12 @@ test("custom policy changes thresholds", () => {
   const lenient = { ...DEFAULT_POLICY, go_threshold: 20 };
   const r = calculateDeployScore({ ...perfect, cpu_percent: 90 }, lenient);
   expect(r.go_no_go).toBe("GO");
+});
+
+test("custom disk_crit policy triggers hard_block at correct threshold", () => {
+  const strict = { ...DEFAULT_POLICY, disk_crit: 80 };
+  // disk at 85% exceeds strict threshold of 80
+  const r = calculateDeployScore({ ...perfect, disk_percent: 85 }, strict);
+  expect(r.hard_block).toBe("disk_full");
+  expect(r.go_no_go).toBe("NO-GO");
 });

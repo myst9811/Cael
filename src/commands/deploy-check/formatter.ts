@@ -19,9 +19,9 @@ export function formatVerdict(result: ScoreResult): string {
   let line = `Score: ${result.total}/140 — ${icon} ${result.go_no_go}`;
   if (result.hard_block) {
     const labels: Record<string, string> = {
-      disk_full: "disk > 95%",
+      disk_full: "disk at critical threshold",
       docker_restarting: "container restarting loop",
-      inode_critical: "inodes > 95%",
+      inode_critical: "inodes at critical threshold",
     };
     line += `  [HARD BLOCK: ${labels[result.hard_block] ?? result.hard_block}]`;
   }

@@ -30,6 +30,7 @@ export async function runDeployCheck(provider: LLMProvider): Promise<void> {
     disk_inode_percent: system?.disk_inode_percent,
     docker: { available: docker.available, containers: docker.containers },
     git: {
+      is_git_repo:      git?.is_git_repo,
       dirty_files:      git?.dirty_files,
       dirty_file_paths: git?.dirty_file_paths,
       unpushed_commits: git?.unpushed_commits,
