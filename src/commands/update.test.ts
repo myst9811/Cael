@@ -9,6 +9,14 @@ test("compareVersions: newer remote returns true", () => {
   expect(compareVersions("v0.1.0", "v0.2.0")).toBe(true);
 });
 
+test("compareVersions: downgrade returns false (not newer)", () => {
+  expect(compareVersions("v0.2.0", "v0.1.0")).toBe(false);
+});
+
+test("compareVersions: patch bump returns true", () => {
+  expect(compareVersions("v0.2.0", "v0.2.1")).toBe(true);
+});
+
 test("compareVersions: dev build returns false", () => {
   expect(compareVersions("dev", "v0.2.0")).toBe(false);
 });
