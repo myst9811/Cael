@@ -4,8 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "bun build --compile index.ts --outfile cael",
-    "build:all": "bun build --compile --target=bun-darwin-arm64 index.ts --outfile cael-darwin-arm64 && bun build --compile --target=bun-darwin-x64 index.ts --outfile cael-darwin-x64 && bun build --compile --target=bun-linux-x64 index.ts --outfile cael-linux-x64 && bun build --compile --target=bun-linux-arm64 index.ts --outfile cael-linux-arm64"
+    "build": "VER=$(git describe --tags --exact-match 2>/dev/null || echo dev) && bun build --compile --define \"BUILD_VERSION=\\\"$VER\\\"\" index.ts --outfile cael",
+    "build:all": "VER=$(git describe --tags --exact-match 2>/dev/null || echo dev) && bun build --compile --target=bun-darwin-arm64 --define \"BUILD_VERSION=\\\"$VER\\\"\" index.ts --outfile cael-darwin-arm64 && bun build --compile --target=bun-darwin-x64 --define \"BUILD_VERSION=\\\"$VER\\\"\" index.ts --outfile cael-darwin-x64 && bun build --compile --target=bun-linux-x64 --define \"BUILD_VERSION=\\\"$VER\\\"\" index.ts --outfile cael-linux-x64 && bun build --compile --target=bun-linux-arm64 --define \"BUILD_VERSION=\\\"$VER\\\"\" index.ts --outfile cael-linux-arm64"
   },
   "devDependencies": {
     "@types/bun": "latest",

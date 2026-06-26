@@ -11,7 +11,8 @@ export interface PostmortemContext {
   systemMetrics: string;
   dockerStatus: string;
   containerLogs: Array<{ name: string; logs: string; truncated: boolean }>;
-  gitLog: string;
+  gitLog: string;           // oneline format for human-readable display
+  gitTimelineLog: string;   // hash + ISO date + subject for timeline engine
   gitLastCommit: string;
   topProcesses: string;
 }
@@ -30,12 +31,13 @@ export async function collectPostmortemContext(
 ): Promise<PostmortemContext> {
   const timestamp = new Date().toISOString();
 
-  const [metrics, dockerStatus, git, processes, gitLog, gitLastCommit] = await Promise.all([
+  const [metrics, dockerStatus, git, processes, gitLog, gitTimelineLog, gitLastCommit] = await Promise.all([
     safe(() => getSystemMetrics(), null),
     safe(() => getDockerStatus(), { available: false, containers: [] }),
     safe(() => getGitStatus(), { is_git_repo: false }),
     safe(() => getProcessList("cpu", 10), { processes: [] }),
     safe(() => $`git log --oneline -20`.quiet().text(), "(git log unavailable)"),
+    safe(() => $`git log --format="%H %aI %s" -20`.quiet().text(), ""),
     safe(() => $`git show --stat HEAD`.quiet().text(), "(git show unavailable)"),
   ]);
 
@@ -72,6 +74,7 @@ export async function collectPostmortemContext(
     dockerStatus: JSON.stringify(dockerStatus, null, 2),
     containerLogs,
     gitLog: gitLog.trim() || "(no commits)",
+    gitTimelineLog: gitTimelineLog.trim(),
     gitLastCommit: gitLastCommit.trim() || "(unavailable)",
     topProcesses: JSON.stringify(processes, null, 2),
   };

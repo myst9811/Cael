@@ -2,6 +2,7 @@ export interface PostmortemFlags {
   container?: string;
   since?: string;
   output?: string;
+  template?: string;
 }
 
 export function parsePostmortemFlags(args: string[]): PostmortemFlags {
@@ -10,6 +11,10 @@ export function parsePostmortemFlags(args: string[]): PostmortemFlags {
     if (args[i] === "--container" && args[i + 1]) result.container = args[++i];
     else if (args[i] === "--since" && args[i + 1]) result.since = args[++i];
     else if (args[i] === "--output" && args[i + 1]) result.output = args[++i];
+    else if (args[i] === "--template") {
+      if (!args[i + 1]) throw new Error("--template requires a path argument");
+      result.template = args[++i];
+    }
   }
   return result;
 }
