@@ -10,7 +10,7 @@ import { runWatch } from "./src/commands/watch";
 import { resolveProvider } from "./src/config";
 import { printLogo } from "./src/assets/logo";
 
-const SUBCOMMANDS = ["ask", "config", "deploy-check", "doctor", "postmortem", "watch"] as const;
+const SUBCOMMANDS = ["ask", "config", "deploy-check", "doctor", "postmortem", "update", "watch"] as const;
 type Subcommand = typeof SUBCOMMANDS[number];
 
 const HELP_TEXT = `
@@ -27,10 +27,12 @@ Subcommands:
   config show                 Show current configuration
   config set <key> <value>    Set a config value
   doctor                      Check dependencies and configuration
+  update                      Check for and install the latest cael release
 
 Options:
   --provider <spec>    Override provider for this run
                        (e.g. anthropic:claude-sonnet-4-6, openai:gpt-4o, ollama:llama3)
+  --version, -V        Show version and exit
   --help, -h           Show this help
 
 Provider configuration (in order of precedence):
@@ -110,6 +112,13 @@ async function repl(providerSpec: string): Promise<void> {
 
 if (import.meta.main) {
   const rawArgs = process.argv.slice(2);
+
+  if (rawArgs.includes("--version") || rawArgs.includes("-V")) {
+    const { printVersion } = await import("./src/version");
+    printVersion();
+    process.exit(0);
+  }
+
   let resolvedProvider: string | null = null;
   try {
     resolvedProvider = await resolveProvider();
