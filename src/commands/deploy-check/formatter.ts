@@ -16,11 +16,12 @@ function itemLine(name: string, item: CheckItem): string {
 
 export function formatVerdict(result: ScoreResult): string {
   const icon = result.go_no_go === "GO" ? "✓" : result.go_no_go === "CAUTION" ? "⚠" : "✗";
-  let line = `Score: ${result.total}/100 — ${icon} ${result.go_no_go}`;
+  let line = `Score: ${result.total}/140 — ${icon} ${result.go_no_go}`;
   if (result.hard_block) {
     const labels: Record<string, string> = {
       disk_full: "disk > 95%",
       docker_restarting: "container restarting loop",
+      inode_critical: "inodes > 95%",
     };
     line += `  [HARD BLOCK: ${labels[result.hard_block] ?? result.hard_block}]`;
   }
@@ -32,8 +33,10 @@ export function formatScoreTable(result: ScoreResult): string {
     itemLine("CPU",    result.items.cpu),
     itemLine("Memory", result.items.memory),
     itemLine("Disk",   result.items.disk),
+    itemLine("Inodes", result.items.inodes),
     itemLine("Docker", result.items.docker),
     itemLine("Git",    result.items.git),
+    itemLine("Branch", result.items.branch_upstream),
   ];
   return rows.join("\n");
 }
