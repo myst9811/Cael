@@ -66,27 +66,36 @@ export function generateAlerts(
   system: SystemMetrics | CollectorError,
   docker: DockerStatus | CollectorError,
 ): string[] {
-  const alerts: string[] = [];
+  const critical: string[] = [];
+  const warnings: string[] = [];
   if (!("error" in system)) {
     const m = system as SystemMetrics;
-    if (m.disk_percent > 95) alerts.push(`${"\x1b[31m"}✕ DISK CRITICAL ${m.disk_percent.toFixed(0)}%${A.reset}`);
-    else if (m.disk_percent > 85) alerts.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
-    if (m.cpu_percent > 90) alerts.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
-    if (m.mem_percent > 90) alerts.push(`${"\x1b[33m"}⚠ Memory ${Math.min(m.mem_percent, 100).toFixed(0)}% used${A.reset}`);
+    if (m.disk_percent > 95) critical.push(`${"\x1b[31m"}✕ DISK CRITICAL ${m.disk_percent.toFixed(0)}%${A.reset}`);
+    else if (m.disk_percent > 85) warnings.push(`${"\x1b[33m"}⚠ Disk ${m.disk_percent.toFixed(0)}% full${A.reset}`);
+    if (m.cpu_percent > 90) warnings.push(`${"\x1b[33m"}⚠ CPU ${m.cpu_percent.toFixed(0)}% high${A.reset}`);
+    if (m.mem_percent > 90) warnings.push(`${"\x1b[33m"}⚠ Memory ${Math.min(m.mem_percent, 100).toFixed(0)}% used${A.reset}`);
   }
   if (!("error" in docker)) {
     const d = docker as DockerStatus;
     if (d.available) {
       for (const c of d.containers) {
         if (c.status === "restarting") {
-          alerts.push(`${"\x1b[33m"}↻ ${c.name} is restarting${A.reset}`);
+          warnings.push(`${"\x1b[33m"}↻ ${c.name} is restarting${A.reset}`);
         } else if (c.status === "exited" && c.exit_code !== 0) {
-          alerts.push(`${"\x1b[31m"}✕ ${c.name} exited (code ${c.exit_code ?? "?"})${A.reset}`);
+          critical.push(`${"\x1b[31m"}✕ ${c.name} exited (code ${c.exit_code ?? "?"})${A.reset}`);
         }
       }
     }
   }
-  return alerts;
+  return [...critical, ...warnings];
+}
+
+function freshnessDot(lastRefreshAt: number, isError: boolean): string {
+  if (isError || lastRefreshAt === 0) return `${A.red}○${A.reset}`;
+  const ageMs = Date.now() - lastRefreshAt;
+  if (ageMs > 30_000) return `${A.red}○${A.reset}`;
+  if (ageMs > 10_000) return `${A.yellow}◐${A.reset}`;
+  return `${A.green}●${A.reset}`;
 }
 
 // ── Frame builder ─────────────────────────────────────────────────────────────
@@ -105,6 +114,11 @@ export interface FrameOptions {
   scrollOffset?: number; // 0 = pinned to bottom; omit or 0 for auto-scroll
   timestamp: string;
   statusError?: string | null;
+  // M2 additions (all optional for backward compat)
+  detailLines?: string[] | null;
+  compact?: boolean;
+  lastRefreshAt?: number;
+  panelErrors?: { system: boolean; docker: boolean; git: boolean };
 }
 
 function wrapWords(text: string, width: number): string[] {
@@ -133,14 +147,21 @@ export function buildFrame(opts: FrameOptions): string {
   const w2 = Math.floor(available / 3);
   const w3 = available - w1 - w2;
 
-  const PANEL_ROWS = 5; // fixed panel content rows
+  const PANEL_ROWS = opts.compact ? 3 : 5;
 
   let frame = "";
 
   // ── Top border + header ───────────────────────────────────────────────────
   const title = `${A.bold}${A.brightGreen} cael watch ${A.reset}`;
-  const ts = `${A.dim}${opts.timestamp}${A.reset}`;
-  const hint = `${A.dim}[/] ask  [q] quit${A.reset}`;
+  const lra = opts.lastRefreshAt ?? 0;
+  const ageMs = lra > 0 ? Date.now() - lra : 0;
+  const ageAnnotation = ageMs > 30_000
+    ? ` ${A.red}(${Math.floor(ageMs / 1000)}s old)${A.reset}`
+    : ageMs > 10_000
+    ? ` ${A.yellow}(${Math.floor(ageMs / 1000)}s old)${A.reset}`
+    : "";
+  const ts = `${A.dim}${opts.timestamp}${A.reset}${ageAnnotation}`;
+  const hint = `${A.dim}[/] ask  [↑↓] select  [z] compact  [q] quit${A.reset}`;
   const headerContent = `${title}  ${ts}  ${hint}`;
   frame += `${B.tl}${hline(innerW)}${B.tr}\n`;
   frame += `${B.v}${pad(headerContent, innerW)}${B.v}\n`;
@@ -151,11 +172,18 @@ export function buildFrame(opts: FrameOptions): string {
   const sys = opts.systemLines;
   const doc = opts.dockerLines;
   const git = opts.gitLines;
+  const pe = opts.panelErrors;
+  const sysDot = pe ? freshnessDot(lra, pe.system) : freshnessDot(lra, false);
+  const dkDot  = pe ? freshnessDot(lra, pe.docker) : freshnessDot(lra, false);
+  const gtDot  = pe ? freshnessDot(lra, pe.git)    : freshnessDot(lra, false);
 
   for (let i = 0; i < PANEL_ROWS; i++) {
-    const l = (i < sys.length ? sys[i] : undefined) ?? "";
-    const m = (i < doc.length ? doc[i] : undefined) ?? "";
-    const r = (i < git.length ? git[i] : undefined) ?? "";
+    const lRaw = (i < sys.length ? sys[i] : undefined) ?? "";
+    const mRaw = (i < doc.length ? doc[i] : undefined) ?? "";
+    const rRaw = (i < git.length ? git[i] : undefined) ?? "";
+    const l = i === 0 ? `${lRaw} ${sysDot}` : lRaw;
+    const m = i === 0 ? `${mRaw} ${dkDot}`  : mRaw;
+    const r = i === 0 ? `${rRaw} ${gtDot}`  : rRaw;
     frame += `${B.v}${pad(l, w1)}${B.v}${pad(m, w2)}${B.v}${pad(r, w3)}${B.v}\n`;
   }
 
@@ -170,16 +198,22 @@ export function buildFrame(opts: FrameOptions): string {
     }
   }
 
+  // ── Detail row (container vital signs) ───────────────────────────────────
+  const detailLines = opts.detailLines ?? null;
+  if (detailLines !== null && detailLines.length > 0) {
+    frame += `${B.lj}${hline(innerW)}${B.rj}\n`;
+    for (const dl of detailLines) {
+      frame += `${B.v}${pad(dl, innerW)}${B.v}\n`;
+    }
+  }
+
   // ── Status / query / AI response ─────────────────────────────────────────
-  // Compute how many rows the status section can fill.
-  //   Fixed rows (excl. status section + bottom border):
-  //     top border(1) + header(1) + panel-sep(1) + panels(5) + alert-sep(1) + alert-rows(A) + status-sep(1) = 11 + A
-  //   Bottom border: 1
-  //   So status rows = opts.rows - 12 - alertRows
+  // Row budget: fixed overhead is 11 rows + alertRows + detailRowCount + (PANEL_ROWS - 5)
+  //   When compact (PANEL_ROWS=3): saves 2 panel rows → those flow into status section.
+  //   When detail visible: detail rows + 1 separator consumed from status budget.
   const alertRows = opts.alerts.length === 0 ? 1 : Math.min(opts.alerts.length, 2);
-  // statusSectionRows: total rows in the status section (content rows + 1 bottom-anchor row).
-  // All three modes produce exactly this many rows so the frame height is always opts.rows.
-  const statusSectionRows = Math.max(3, opts.rows - 12 - alertRows);
+  const detailRowCount = detailLines && detailLines.length > 0 ? detailLines.length + 1 : 0;
+  const statusSectionRows = Math.max(3, opts.rows - 12 - alertRows - detailRowCount - (PANEL_ROWS - 5));
   const contentRows = statusSectionRows - 1; // last row is always the anchor (dismiss/prompt/hint)
 
   frame += `${B.lj}${hline(innerW)}${B.rj}\n`;

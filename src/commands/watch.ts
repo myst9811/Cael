@@ -5,10 +5,12 @@ import { createWatchState, handleKey } from "../tui/state";
 import type { WatchState } from "../tui/state";
 import { setupRawMode } from "../tui/input";
 import type { LLMProvider, Message } from "../providers/types";
-import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError } from "../collectors/types";
+import type { CollectedContext, SystemMetrics, DockerStatus, GitStatus, CollectorError, ContainerInspect } from "../collectors/types";
 import { LOGO, LOGO_ROWS } from "../assets/logo";
 import { runWatchAgentLoop } from "./watch-agent";
 import { watchTools, watchExecuteToolWithTimeout } from "../tools";
+import { getDockerInspect } from "../collectors/docker-inspect";
+import { renderContainerDetail } from "../tui/detail";
 
 const REFRESH_MS = 5000;
 
@@ -49,11 +51,13 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   let querying = false;
   let lastRefreshError: string | null = null;
   let conversationHistory: Message[] = [];
+  let lastRefreshAt = 0;
+  let inspectCache = new Map<string, ContainerInspect>();
+  let lastContainerNames: string[] = [];
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   const onResize = () => { if (!querying) draw(); };
 
-  // Forward-declared so cleanup can deregister it before exiting
   let onCrash: () => void = () => {};
 
   const cleanup = (code = 0) => {
@@ -72,16 +76,33 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
   process.once("unhandledRejection", onCrash);
 
   // ── Draw ─────────────────────────────────────────────────────────────────
-  // Restores cursor to the saved position (right below the logo) and redraws
-  // the dashboard frame in-place, filling all rows beneath the logo.
   const draw = () => {
     const cols = process.stdout.columns || 80;
     const rows = Math.max(3, (process.stdout.rows || 24) - LOGO_ROWS);
+
+    const dockerData = lastCtx?.docker;
+    const containers = dockerData && "available" in dockerData && (dockerData as DockerStatus).available
+      ? (dockerData as DockerStatus).containers
+      : [];
+    const panelErrors = lastCtx ? {
+      system: isError(lastCtx.system),
+      docker: isError(lastCtx.docker),
+      git:    isError(lastCtx.git),
+    } : { system: false, docker: false, git: false };
+
+    const detailLines = state.selectedContainer && inspectCache.has(state.selectedContainer)
+      ? renderContainerDetail(inspectCache.get(state.selectedContainer)!, state.compactMode)
+      : state.selectedContainer
+      ? ["  loading..."]
+      : null;
+
     const frame = buildFrame({
       cols,
       rows,
       systemLines: lastCtx ? renderSystemPanel(lastCtx.system) : ["SYSTEM", "  collecting..."],
-      dockerLines: lastCtx ? renderDockerPanel(lastCtx.docker) : ["DOCKER", "  collecting..."],
+      dockerLines: lastCtx
+        ? renderDockerPanel(lastCtx.docker, state.panelFocus === "docker" ? state.dockerCursor : -1)
+        : ["DOCKER", "  collecting..."],
       gitLines:    lastCtx ? renderGitPanel(lastCtx.git)       : ["GIT",    "  collecting..."],
       alerts: lastCtx ? generateAlerts(lastCtx.system, lastCtx.docker) : [],
       mode: state.mode,
@@ -91,6 +112,10 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       scrollOffset: state.scrollOffset,
       timestamp: new Date().toLocaleTimeString(),
       statusError: lastRefreshError,
+      detailLines,
+      compact: state.compactMode,
+      lastRefreshAt,
+      panelErrors,
     });
     const logoBody = LOGO.startsWith("\n") ? LOGO.slice(1) : LOGO;
     process.stdout.write(A.cursorHome + logoBody + "\n" + frame + A.clearBelow);
@@ -102,15 +127,29 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     try {
       lastCtx = await collectAll();
       lastRefreshError = null;
+      lastRefreshAt = Date.now();
+
+      // Invalidate inspect cache if container set changed
+      const newNames = !isError(lastCtx.docker) && (lastCtx.docker as DockerStatus).available
+        ? (lastCtx.docker as DockerStatus).containers.map(c => c.name)
+        : [];
+      const namesChanged =
+        JSON.stringify([...newNames].sort()) !== JSON.stringify([...lastContainerNames].sort());
+      if (namesChanged) {
+        inspectCache = new Map();
+        lastContainerNames = newNames;
+      }
+
+      // Clamp dockerCursor if container list shrank
+      if (state.dockerCursor >= lastContainerNames.length && lastContainerNames.length > 0) {
+        state = { ...state, dockerCursor: lastContainerNames.length - 1 };
+      }
     } catch (e: unknown) {
       lastRefreshError = e instanceof Error ? e.message : "collection failed";
     }
     if (!querying) draw();
   };
 
-  // Print the logo, save cursor position immediately below it, then collect
-  // the first data snapshot. The dashboard renders below the logo on every
-  // subsequent draw() by restoring to the saved cursor position.
   process.stdout.write("\x1b[2J\x1b[H" + A.altEnter + "\x1b[2J\x1b[H" + A.hideCursor);
   await doRefresh();
 
@@ -122,7 +161,6 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     querying = true;
     if (refreshTimer) clearInterval(refreshTimer);
 
-    // Collect a fresh snapshot for the system prompt
     let ctx = lastCtx;
     try { ctx = await collectAll(); lastCtx = ctx; } catch (e: unknown) {
       lastRefreshError = e instanceof Error ? e.message : "collection failed";
@@ -130,7 +168,6 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
 
     const systemPrompt = ctx ? formatSystemPrompt(ctx) : "You are Cael, a DevOps agent.";
 
-    // Build input history without mutating conversationHistory yet
     const inputHistory: Message[] = [
       ...conversationHistory,
       { role: "user" as const, content: question },
@@ -166,8 +203,6 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err);
       let friendly = raw;
-      // Anthropic SDK may surface the raw response body as err.message.
-      // Try to extract a human-readable string from the JSON payload.
       try {
         const jsonStart = raw.indexOf("{");
         if (jsonStart >= 0) {
@@ -191,7 +226,6 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
 
   // ── Keyboard input ────────────────────────────────────────────────────────
   const restoreRaw = setupRawMode((key) => {
-    // Handle query submission before state machine
     if (state.mode === "QUERYING" && (key === "\r" || key === "\n")) {
       if (querying) return;
       const q = state.queryInput.trim();
@@ -202,14 +236,24 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       return;
     }
 
-    // Block dismiss while an agent loop is in progress, but allow quit/Ctrl+C through
     if (state.mode === "SHOWING_RESULT" && querying) {
       if (key === "q" || key === "\x03") { restoreRaw(); cleanup(0); }
       return;
     }
 
-    const { state: next, action } = handleKey(state, key);
+    const prevSelected = state.selectedContainer;
+    const { state: next, action } = handleKey(state, key, lastContainerNames);
     state = next;
+
+    // Trigger inspect fetch when a new container is selected
+    if (state.selectedContainer && state.selectedContainer !== prevSelected) {
+      const name = state.selectedContainer;
+      if (!inspectCache.has(name)) {
+        getDockerInspect(name)
+          .then(inspect => { inspectCache.set(name, inspect); if (!querying) draw(); })
+          .catch(() => {});
+      }
+    }
 
     if (action === "quit") {
       restoreRaw();

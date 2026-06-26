@@ -12,7 +12,7 @@ export interface SystemMetrics {
 export interface DockerContainer {
   name: string;
   status: "running" | "exited" | "paused" | "restarting";
-  health?: "healthy" | "unhealthy" | "starting";
+  health?: "healthy" | "unhealthy" | "starting" | "none";
   image: string;
   uptime?: string;
   exit_code?: number;
@@ -28,6 +28,17 @@ export interface DockerStatus {
 export interface DockerLogsResult {
   logs: string;
   truncated: boolean;
+}
+
+export interface ContainerInspect {
+  name: string;
+  status: string;
+  startedAt: string;
+  finishedAt: string;
+  restartCount: number;
+  exitCode: number;
+  image: string;
+  ports: string[];
 }
 
 export interface GitStatus {

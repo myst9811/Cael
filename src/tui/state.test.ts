@@ -134,3 +134,82 @@ test("ESC in SHOWING_RESULT → IDLE and clears history", () => {
   expect(state.scrollOffset).toBe(0);
   expect(action).toBe("none");
 });
+
+// ── M2: docker navigation, container selection, compact ──────────────────────
+
+test("createWatchState: new M2 fields initialise correctly", () => {
+  const s = createWatchState();
+  expect(s.dockerCursor).toBe(-1);
+  expect(s.panelFocus).toBeNull();
+  expect(s.selectedContainer).toBeNull();
+  expect(s.compactMode).toBe(false);
+});
+
+test("down arrow in IDLE with containers moves cursor to 0", () => {
+  const { state } = handleKey(createWatchState(), "\x1b[B", ["api", "db"]);
+  expect(state.dockerCursor).toBe(0);
+  expect(state.panelFocus).toBe("docker");
+});
+
+test("up arrow in IDLE with containers wraps to last container", () => {
+  const { state } = handleKey(createWatchState(), "\x1b[A", ["api", "db"]);
+  expect(state.dockerCursor).toBe(1);
+});
+
+test("down arrow wraps from last container back to 0", () => {
+  const s = { ...createWatchState(), dockerCursor: 1, panelFocus: "docker" as const };
+  const { state } = handleKey(s, "\x1b[B", ["api", "db"]);
+  expect(state.dockerCursor).toBe(0);
+});
+
+test("up arrow decrements cursor", () => {
+  const s = { ...createWatchState(), dockerCursor: 1, panelFocus: "docker" as const };
+  const { state } = handleKey(s, "\x1b[A", ["api", "db"]);
+  expect(state.dockerCursor).toBe(0);
+});
+
+test("arrow keys are no-ops in IDLE with no containers", () => {
+  const { state } = handleKey(createWatchState(), "\x1b[B", []);
+  expect(state.dockerCursor).toBe(-1);
+  expect(state.panelFocus).toBeNull();
+});
+
+test("Enter in IDLE with docker focused sets selectedContainer", () => {
+  const s = { ...createWatchState(), dockerCursor: 0, panelFocus: "docker" as const };
+  const { state } = handleKey(s, "\r", ["api", "db"]);
+  expect(state.selectedContainer).toBe("api");
+});
+
+test("Enter in IDLE toggles off selectedContainer when already selected", () => {
+  const s = { ...createWatchState(), dockerCursor: 0, panelFocus: "docker" as const, selectedContainer: "api" };
+  const { state } = handleKey(s, "\r", ["api", "db"]);
+  expect(state.selectedContainer).toBeNull();
+});
+
+test("ESC in IDLE with selectedContainer closes detail only (keeps cursor)", () => {
+  const s = { ...createWatchState(), dockerCursor: 0, panelFocus: "docker" as const, selectedContainer: "api" };
+  const { state } = handleKey(s, "\x1b", ["api"]);
+  expect(state.selectedContainer).toBeNull();
+  expect(state.dockerCursor).toBe(0);
+});
+
+test("ESC in IDLE with cursor but no selectedContainer clears cursor", () => {
+  const s = { ...createWatchState(), dockerCursor: 1, panelFocus: "docker" as const };
+  const { state } = handleKey(s, "\x1b", ["api", "db"]);
+  expect(state.dockerCursor).toBe(-1);
+  expect(state.panelFocus).toBeNull();
+});
+
+test("z in IDLE toggles compactMode on and off", () => {
+  const s = createWatchState();
+  const { state: s1 } = handleKey(s, "z");
+  expect(s1.compactMode).toBe(true);
+  const { state: s2 } = handleKey(s1, "z");
+  expect(s2.compactMode).toBe(false);
+});
+
+test("z in SHOWING_RESULT toggles compactMode", () => {
+  const s = { ...createWatchState(), mode: "SHOWING_RESULT" as const };
+  const { state } = handleKey(s, "z");
+  expect(state.compactMode).toBe(true);
+});
