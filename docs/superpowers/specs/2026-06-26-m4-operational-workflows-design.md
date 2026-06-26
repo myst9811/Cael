@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make `cael deploy-check` and `cael postmortem` production-ready for on-call teams: configurable scoring policies, three new deploy checks, a structured incident timeline, custom postmortem templates, SHA256 release checksums, a Homebrew tap, and a `cael update` self-update command.
+Make `cael deploy-check` and `cael postmortem` production-ready for on-call teams: configurable scoring policies, two new deploy checks (inode pressure, branch upstream) plus an enhanced git check (lockfile detection), a structured incident timeline, custom postmortem templates, SHA256 release checksums, a Homebrew tap, and a `cael update` self-update command with checksum verification.
 
 ## Approach
 
@@ -26,21 +26,23 @@ M1 (`src/config.ts`, `~/.cael/config.json`) and M3 (`SystemMetrics.disk_inode_pe
 
 ```ts
 export interface DeployPolicy {
-  cpu_warn: number;        // default 70
-  cpu_crit: number;        // default 85
-  mem_warn: number;        // default 80
-  mem_crit: number;        // default 90
-  disk_warn: number;       // default 85
-  disk_crit: number;       // default 95
-  go_threshold: number;    // default 80  — total score for GO verdict
-  caution_threshold: number; // default 60 — total score for CAUTION verdict
+  cpu_warn: number;           // default 70
+  cpu_crit: number;           // default 85
+  mem_warn: number;           // default 80
+  mem_crit: number;           // default 90
+  disk_warn: number;          // default 85
+  disk_crit: number;          // default 95
+  go_threshold: number;       // default 96  — raw score out of 120 for GO verdict (80%)
+  caution_threshold: number;  // default 72  — raw score out of 120 for CAUTION verdict (60%)
 }
 
+// Total score is out of 120: 6 checks × 20pts each.
+// go_threshold=96 means ≥80% required for GO; caution_threshold=72 means ≥60% for CAUTION.
 export const DEFAULT_POLICY: DeployPolicy = {
   cpu_warn: 70, cpu_crit: 85,
   mem_warn: 80, mem_crit: 90,
   disk_warn: 85, disk_crit: 95,
-  go_threshold: 80, caution_threshold: 60,
+  go_threshold: 96, caution_threshold: 72,
 };
 
 export async function loadDeployPolicy(): Promise<DeployPolicy>
@@ -71,17 +73,24 @@ disk_inode_percent?: number;
 
 `ScoreResult.items` gains two new entries:
 ```ts
-inodes: CheckItem;    // 20-point check using disk_inode_percent
+inodes: CheckItem;          // 20-point check using disk_inode_percent
+branch_upstream: CheckItem; // 20-point check using behind_commits
 ```
 
-Git check expanded — same 20 points but now distinguishes three conditions:
+**Inode check** — 20 pts if `disk_inode_percent` < 85%; 10 pts if < 95%; 0 pts otherwise. Skipped (returns `{score: 20}`) when `disk_inode_percent` is undefined.
+
+**Branch upstream check** — requires new `behind_commits?: number` field on `GitStatus` (from `git rev-list --count HEAD..@{u}`). 20 pts if behind = 0; 10 pts if behind 1-5; 0 pts if behind > 5 or upstream unknown. Flagged explicitly when behind > 0.
+
+**Git check enhanced** — same 20 points but now distinguishes:
 - dirty lockfile (`bun.lock`, `package-lock.json`, `yarn.lock`, `Cargo.lock`) → 0 pts, flagged explicitly
 - unpushed commits → 5 pts deducted
 - dirty non-lockfile → 5 pts deducted
 
+Lockfile detection requires filenames, not just a count. `GitStatus` gains `dirty_file_paths?: string[]` (from `git status --short`, lines starting with ` M`, `M `, `??`). `DeployInput.git` gains `dirty_file_paths?: string[]`. `getGitStatus()` in `src/collectors/git.ts` is updated to run `git status --short` and populate this field.
+
 `ScoreResult.hard_block` gains `"inode_critical"` as a new variant (triggered when `disk_inode_percent > 95`).
 
-Total score is now out of 120 (5 existing checks × 20pts + inode 20pts). `go_threshold` and `caution_threshold` in the policy are raw scores out of 120. Default `go_threshold: 96` (80% of 120) and `caution_threshold: 72` (60% of 120).
+Total score is out of 120 (6 checks × 20pts). `go_threshold` and `caution_threshold` in the policy are raw scores. Default `go_threshold: 96` (80% of 120) and `caution_threshold: 72` (60% of 120).
 
 **`src/commands/deploy-check/formatter.ts`** — add `itemLine("Inodes", result.items.inodes)` to `formatScoreTable`. Add `"inode_critical"` to the hard-block label map.
 
@@ -118,7 +127,7 @@ export function formatTimeline(events: TimelineEvent[]): string  // markdown tab
 
 **Log pass:** for each container in `ctx.containerLogs`, scans each log line for a leading ISO timestamp (`/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/`). Classifies level by keyword scan (ERROR/FATAL/CRITICAL → error, WARN → warn). Deduplication: lines within 1 second from the same container whose normalised prefix (first 60 chars, timestamps stripped) matches an already-seen entry are collapsed — count is shown instead.
 
-Result: both arrays merged and sorted by `timestamp` ascending. Events without a parseable timestamp are placed at the beginning (oldest-unknown).
+Result: timestamped events merged and sorted by `timestamp` ascending. Events without a parseable timestamp are collected separately and appended after the sorted timeline under an "Untimed Evidence" heading in `formatTimeline` — they are not placed first, as doing so would make them look causally prior to dated events.
 
 **`formatTimeline`** returns a markdown table:
 ```
@@ -132,7 +141,12 @@ Result: both arrays merged and sorted by `timestamp` ascending. Events without a
 
 **`src/commands/postmortem/context.ts`**
 
-Change git log command from `git log --oneline -20` to `git log --format="%H %aI %s" -20` so timestamps are available for the timeline.
+`PostmortemContext` gains a new field:
+```ts
+gitTimelineLog: string;  // git log --format="%H %aI %s" -20 (ISO date for timeline engine)
+```
+
+`gitLog` (the existing `--oneline` format) is **retained** for human-readable display in `formatPostmortemContext`. Both fields are populated. `extractTimeline` consumes `gitTimelineLog`; `formatPostmortemContext` continues to render `gitLog` under "RECENT GIT HISTORY".
 
 **`src/commands/postmortem/index.ts`**
 
@@ -175,9 +189,11 @@ export const DEFAULT_TEMPLATE = `## What Happened
 **`src/commands/postmortem/index.ts`**
 
 Template resolution order:
-1. `--template <path>` flag
-2. `.cael/postmortem-template.md` in CWD (if it exists)
+1. `--template <path>` flag (absolute or CWD-relative path both accepted — user explicitly chose it)
+2. `.cael/postmortem-template.md` in CWD (if it exists — CWD-confined)
 3. `DEFAULT_TEMPLATE`
+
+**Path safety for `--template`:** file size capped at 50KB (larger files use `DEFAULT_TEMPLATE` with a warning). Read errors (not found, permission denied) fall back to `DEFAULT_TEMPLATE` with a stderr warning — they do not crash the command. No content sanitisation needed since the user chose the path.
 
 The resolved template replaces the hardcoded section list in `POSTMORTEM_PROMPT`. The AI is instructed: "Fill in each `##` section below exactly as named. Preserve the section headers."
 
@@ -212,16 +228,52 @@ Update all `bun build --compile` commands to add `--define BUILD_VERSION='"$(git
 
 `runUpdate(): Promise<void>`
 
-1. Fetch `https://api.github.com/repos/myst9811/Cael/releases/latest` (no auth required for public repo). Timeout: 10s.
-2. Compare `tag_name` from response to `VERSION`. If equal or if `VERSION === "dev"`, print "already up to date" and exit.
-3. Determine asset name: `cael-${platform}-${arch}` where platform = `darwin`/`linux` and arch = `arm64`/`x64` from `process.platform` + `process.arch`.
-4. Find matching asset in `assets` array, get `browser_download_url`.
-5. Stream download to a temp file, then `Bun.write` over the current executable path (`process.execPath`). Set file mode `0o755`.
-6. Print: `Updated to <tag_name>. Restart cael to use the new version.`
+**Pre-flight checks (fail fast before any download):**
+- If `VERSION === "dev"`: print "Cannot update a dev build. Use `bun run index.ts`." and exit 1.
+- If `process.execPath` ends with `/bun` or `process.execPath` does not end with `/cael`: print "Not running as a compiled cael binary. Skipping self-update." and exit 0.
+- If `process.execPath` includes `/Cellar/` or `/homebrew/`: print "Installed via Homebrew — run `brew upgrade cael` instead." and exit 0.
+
+**Update flow:**
+1. Fetch `https://api.github.com/repos/myst9811/Cael/releases/latest`. Timeout: 10s.
+2. Compare `tag_name` to `VERSION`. If equal, print "Already at <tag_name>." and exit 0.
+3. Determine asset name: `cael-darwin-arm64`, `cael-darwin-x64`, `cael-linux-x64`, or `cael-linux-arm64` from `process.platform` + `process.arch`. If no match, print unsupported platform message and exit 1.
+4. Find binary asset and `checksums.sha256` asset in `assets` array.
+5. Download `checksums.sha256` first. Parse the line matching the asset name to extract the expected SHA256 hex string.
+6. Download binary to a temp file (`${process.execPath}.tmp`).
+7. Compute SHA256 of the downloaded temp file using `new Bun.CryptoHasher("sha256")`. Compare to expected hash. If mismatch, delete temp file, print "Checksum mismatch — aborting update." and exit 1.
+8. Rename temp file over `process.execPath` (`Bun.file(...).rename(...)` or shell `mv`). Catch permission errors: if rename fails, print "Permission denied updating <path>. Try: sudo cael update" and exit 1.
+9. Set file mode `0o755` via `chmod`.
+10. Print: `Updated to <tag_name>.`
+
+### `src/version.ts` additions
+
+Also export a human-readable version string used by the new `--version` flag:
+```ts
+export function printVersion(): void {
+  console.log(`cael ${VERSION}`);
+}
+```
 
 ### `index.ts` (modify)
 
-Add `"update"` to `SUBCOMMANDS`. Route to `runUpdate()`. No provider required.
+**Add `--version`/`-V` flag** — checked before all subcommand routing:
+```ts
+if (rawArgs.includes("--version") || rawArgs.includes("-V")) {
+  const { printVersion } = await import("./src/version");
+  printVersion();
+  process.exit(0);
+}
+```
+
+**Add `"update"` to `SUBCOMMANDS`.** Route `update` to `runUpdate()` **before** the `!providerSpec` guard — same pattern as `config` and `doctor`:
+```ts
+if (subcommand === "update") {
+  await runUpdate().catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
+  process.exit(0);
+}
+```
+
+Add `update` to the `--help` text.
 
 ### `.github/workflows/release.yml` (modify)
 
@@ -232,7 +284,7 @@ After building all 4 binaries, add:
   run: sha256sum cael-darwin-arm64 cael-darwin-x64 cael-linux-x64 cael-linux-arm64 > checksums.sha256
 
 - name: Update Homebrew tap
-  if: env.HOMEBREW_TAP_TOKEN != ''
+  if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
   env:
     HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
   run: |
@@ -248,10 +300,13 @@ After building all 4 binaries, add:
         on_arm do
           url "https://github.com/myst9811/Cael/releases/download/${VERSION}/cael-darwin-arm64"
           sha256 "${ARM64_SHA}"
+          def install
+            bin.install "cael-darwin-arm64" => "cael"
+          end
         end
-      end
-      def install
-        bin.install "cael-darwin-arm64" => "cael"
+        on_intel do
+          odie "cael does not provide a macOS x86_64 binary. Use the linux-x64 binary on Linux x86."
+        end
       end
     end
     EOF
@@ -264,7 +319,11 @@ Add `checksums.sha256` to the `softprops/action-gh-release` files list.
 
 ### Tests
 
-**`src/commands/update.test.ts`** (new) — mock `fetch` to return a fake releases API response; verify version comparison logic; verify correct asset name selection per platform/arch; verify graceful "already up to date" path.
+**`src/commands/update.test.ts`** (new) — mock `fetch` to return a fake releases API + checksums response; verify version comparison; verify asset name selection per platform/arch; verify "already up to date" path; verify dev-build refusal; verify Homebrew install detection; verify checksum mismatch aborts and deletes temp file.
+
+**`src/version.test.ts`** (new, minimal) — verify `VERSION` is a non-empty string; verify `--version`/`-V` flag prints version and exits in `index.ts` integration.
+
+**`src/collectors/git.test.ts`** (extend) — verify `dirty_file_paths` is populated from `git status --short` fixture; verify lockfile names are detected.
 
 ---
 
