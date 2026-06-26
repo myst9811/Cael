@@ -79,7 +79,7 @@ test("watchExecuteToolWithTimeout blocks unknown command in watch mode", async (
 });
 
 test("watchExecuteToolWithTimeout allows grep in watch mode", async () => {
-  const result = await watchExecuteToolWithTimeout("run_shell", { command: "grep -r TODO ." }, 5000);
+  const result = await watchExecuteToolWithTimeout("run_shell", { command: "grep -r TODO src/" }, 5000);
   expect(result).not.toMatch(/not permitted/i);
 });
 
