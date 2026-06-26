@@ -90,8 +90,9 @@ export async function runWatch(provider: LLMProvider): Promise<void> {
       git:    isError(lastCtx.git),
     } : { system: false, docker: false, git: false };
 
-    const detailLines = state.selectedContainer && inspectCache.has(state.selectedContainer)
-      ? renderContainerDetail(inspectCache.get(state.selectedContainer)!, state.compactMode)
+    const cachedInspect = state.selectedContainer ? inspectCache.get(state.selectedContainer) : undefined;
+    const detailLines = cachedInspect
+      ? renderContainerDetail(cachedInspect, state.compactMode)
       : state.selectedContainer
       ? ["  loading..."]
       : null;

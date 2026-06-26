@@ -1,9 +1,24 @@
 import { $ } from "bun";
 import type { ContainerInspect } from "./types";
 
-export function parseDockerInspect(data: any[]): ContainerInspect {
-  const c = data[0];
-  if (!c) throw new Error("docker inspect returned empty array");
+interface DockerInspectRaw {
+  Name?: string;
+  RestartCount?: number;
+  State?: {
+    Status?: string;
+    ExitCode?: number;
+    StartedAt?: string;
+    FinishedAt?: string;
+  };
+  Config?: { Image?: string };
+  NetworkSettings?: {
+    Ports?: Record<string, Array<{ HostIp: string; HostPort: string }> | null>;
+  };
+}
+
+export function parseDockerInspect(raw: unknown): ContainerInspect {
+  const c = raw as DockerInspectRaw;
+  if (!c || typeof c !== "object") throw new Error("docker inspect returned unexpected shape");
 
   const rawPorts: Record<string, Array<{ HostIp: string; HostPort: string }> | null> =
     c.NetworkSettings?.Ports ?? {};
@@ -28,6 +43,7 @@ export function parseDockerInspect(data: any[]): ContainerInspect {
 }
 
 export async function getDockerInspect(name: string): Promise<ContainerInspect> {
-  const out = await $`docker inspect ${name}`.quiet().text();
-  return parseDockerInspect(JSON.parse(out) as any[]);
+  // docker inspect --format '{{json .}}' returns a single JSON object per container
+  const out = await $`docker inspect --format ${"{{json .}}"} ${name}`.quiet().text();
+  return parseDockerInspect(JSON.parse(out.trim()));
 }

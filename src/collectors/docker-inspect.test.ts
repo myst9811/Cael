@@ -3,8 +3,11 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { parseDockerInspect } from "./docker-inspect";
 
-const fixture = (name: string) =>
-  JSON.parse(readFileSync(join(import.meta.dir, "__fixtures__", name), "utf-8"));
+// Fixtures are arrays (docker inspect default format); unwrap to match --format '{{json .}}' single object
+const fixture = (name: string) => {
+  const parsed = JSON.parse(readFileSync(join(import.meta.dir, "__fixtures__", name), "utf-8"));
+  return Array.isArray(parsed) ? parsed[0] : parsed;
+};
 
 test("parseDockerInspect: extracts name (strips leading slash)", () => {
   const result = parseDockerInspect(fixture("docker-inspect-running.json"));
