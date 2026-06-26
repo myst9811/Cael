@@ -8,6 +8,14 @@ Give Cael's AI agent four new reactive tools for deep incident investigation (li
 
 Approach A — pure collector expansion. New tools are regular `ToolDefinition` entries added to `collectorTools` and dispatched through the existing `executeTool` path. Cheap proactive data (disk inodes) is folded into the existing `getSystemMetrics()` call; everything else is reactive. No new architecture concepts.
 
+## Prerequisites
+
+M3 must be built on top of both M1 and M2:
+
+- **M1** — `redactSecrets()` from `src/redact.ts` must be applied to new collector outputs in `executeTool` before they are returned to the LLM (the same way M1 applied it to `run_shell` and `get_docker_logs`). New collectors (ports, process tree, services, log patterns) can surface env vars, tokens, and connection strings from process cmdlines and service configs.
+- **M2** — The `generateAlerts()` inode snippet in this spec uses M2's `critical[]` / `warnings[]` severity-bucket structure. If M3 is implemented on a branch where M2 is not yet merged, use the pre-M2 single-array style and add a TODO to convert once M2 lands.
+- **watchTools** — Because new tools are added to `collectorTools`, they are automatically included in `watchTools` (via `[...collectorTools]`). `get_process_tree` and `get_runtime_services` can be slow (several hundred ms). This is acceptable since watch's AI chat is already async; no changes to the watch allowlist are needed because these collectors use `Bun.spawn` directly rather than `run_shell`.
+
 ---
 
 ## Types (`src/collectors/types.ts`)
@@ -49,6 +57,7 @@ export interface ServiceEntry {
 
 export interface RuntimeServices {
   services: ServiceEntry[];
+  unavailable_sources: string[];  // sources where binary was not found (e.g. ["systemd", "docker-compose"])
 }
 
 export interface LogPattern {
@@ -61,8 +70,9 @@ export interface LogPattern {
 
 export interface DockerLogPatterns {
   container: string;
-  total_lines: number;
-  lines_analyzed: number;
+  total_lines: number;       // lines in the raw fetch (may be less than requested if 10KB cap hit)
+  lines_analyzed: number;    // actual lines passed to pattern analysis (= total_lines, not the requested count)
+  truncated: boolean;        // true when getDockerLogs hit its 10KB cap before reaching requested line count
   error_count: number;
   warn_count: number;
   patterns: LogPattern[];
@@ -85,23 +95,34 @@ disk_inode_percent?: number;  // highest inode usage across non-tmpfs mounts
 
 **`getListeningPorts(): Promise<NetworkPorts>`**
 
-Platform dispatch:
-- **macOS** (`process.platform === "darwin"`): `lsof -i -P -n -sTCP:LISTEN`
-- **Linux**: `ss -tlnp`
+Platform dispatch — two commands run in parallel and results are merged:
+
+- **macOS** (`process.platform === "darwin"`):
+  - TCP: `lsof -i TCP -P -n -sTCP:LISTEN`
+  - UDP: `lsof -i UDP -P -n`
+  - Both commands output the same column format; `protocol` is derived from the `TYPE` column (`IPv4`/`IPv6`) and the `NAME` field suffix (`TCP`/`UDP`).
+- **Linux**:
+  - TCP + UDP: `ss -tulnp` (`-t` TCP, `-u` UDP, `-l` listening, `-n` no DNS, `-p` process)
+  - `protocol` is read from the `Netid` column (`tcp`/`udp`).
 
 Parse each output line into `PortEntry`. PID and process name may be absent if the process is owned by another user (not an error — return `PortEntry` with undefined `pid`/`process_name`). Timeout: 10s.
 
-Fixture-based tests in `src/collectors/network.test.ts` with a macOS `lsof` fixture and a Linux `ss` fixture.
+Fixture-based tests in `src/collectors/network.test.ts` with four fixtures: macOS TCP (`lsof` TCP output), macOS UDP (`lsof` UDP output), Linux TCP (`ss` TCP rows), Linux UDP (`ss` UDP rows). Verify `protocol` field is set correctly for each, and that a line without process info produces a `PortEntry` with undefined `pid`.
 
 ### `src/collectors/process-tree.ts`
 
-**`getProcessTree(rootPid?: number): Promise<ProcessTree>`**
+**`getProcessTree(rootPid?: number, maxDepth = 3, limit = 50): Promise<ProcessTree>`**
 
-Runs `ps -eo pid,ppid,pcpu,rss,comm` (compatible with macOS and Linux with minor format differences). Builds a `pid → ProcessNode` map in TypeScript, links children to parents, identifies roots (ppid === 0 or ppid === 1 or ppid not in the map). If `rootPid` is provided, returns only the subtree rooted at that PID; if not found, returns `{ roots: [] }`.
+Runs `ps -eo pid,ppid,pcpu,rss,comm` (compatible with macOS and Linux with minor format differences). Builds a `pid → ProcessNode` map in TypeScript, links children to parents, identifies roots (ppid === 0 or ppid === 1 or ppid not in the map).
+
+- If `rootPid` is provided: returns only the subtree rooted at that PID, up to `maxDepth` levels. If not found, returns `{ roots: [] }`.
+- If `rootPid` is omitted: returns the first `limit` root processes (sorted by CPU descending), each expanded up to `maxDepth` levels.
+
+Defaults (`maxDepth = 3`, `limit = 50`) keep JSON output within `MAX_TOOL_RESULT_CHARS` on typical hosts. The LLM should pass a specific `pid` when it needs full subtree depth.
 
 `mem_mb` is derived from RSS (in KB from ps, divided by 1024).
 
-Fixture-based tests in `src/collectors/process-tree.test.ts`.
+Fixture-based tests in `src/collectors/process-tree.test.ts`. Include a test asserting that calling with defaults on a 200-process fixture returns no more than 50 roots and no node deeper than depth 3.
 
 ### `src/collectors/services.ts`
 
@@ -115,7 +136,7 @@ Runs up to three commands in parallel, each wrapped in try/catch (missing binary
 
 If `source` is specified, runs only that source. Default is `"all"`.
 
-Tests in `src/collectors/services.test.ts` with mocked `Bun.spawn` output.
+Tests in `src/collectors/services.test.ts` with mocked `Bun.spawn` output. Include a test verifying that a missing binary (spawn throws) populates `unavailable_sources` rather than silently returning an empty `services` array, and a test verifying "no units found" (spawn succeeds but output is empty) returns an empty `services` array with an empty `unavailable_sources`.
 
 ### `src/collectors/log-patterns.ts`
 
@@ -149,7 +170,7 @@ Add 4 tool definitions to `collectorTools`:
 
 ```ts
 { name: "get_listening_ports",     description: "List all TCP/UDP ports currently listening, with owning process name and PID", input_schema: { type: "object", properties: {}, required: [] } }
-{ name: "get_process_tree",        description: "Get the full process tree showing parent/child relationships. Pass pid to get a subtree.", input_schema: { type: "object", properties: { pid: { type: "number", description: "Root PID for subtree (omit for full tree)" } }, required: [] } }
+{ name: "get_process_tree",        description: "Get the process tree showing parent/child relationships. Without pid, returns top 50 roots to depth 3. Pass pid to get a specific subtree.", input_schema: { type: "object", properties: { pid: { type: "number", description: "Root PID for subtree (omit for top-level tree)" }, max_depth: { type: "number", description: "Maximum depth to expand (default 3)" }, limit: { type: "number", description: "Max root processes when pid is omitted (default 50)" } }, required: [] } }
 { name: "get_runtime_services",    description: "List running services from systemd, launchctl, and docker-compose", input_schema: { type: "object", properties: { source: { type: "string", enum: ["systemd", "launchctl", "docker-compose", "all"], description: "Filter by service source (default: all)" } }, required: [] } }
 { name: "get_docker_log_patterns", description: "Analyse a container's recent logs for recurring error patterns and frequency", input_schema: { type: "object", properties: { container: { type: "string", description: "Container name or ID" }, lines: { type: "number", description: "Lines to analyse (default 200)" }, since: { type: "string", description: "Only logs since this duration (e.g. 30m, 2h) or ISO timestamp" } }, required: ["container"] } }
 ```
@@ -183,12 +204,12 @@ if (m.disk_inode_percent !== undefined) {
 
 | File | Test approach |
 |------|---------------|
-| `src/collectors/network.test.ts` | Fixture-based: macOS `lsof` output and Linux `ss` output; verify `PortEntry` fields; test lines without PID |
-| `src/collectors/process-tree.test.ts` | Fixture-based: 15-line `ps` output covering parent/child/orphan; verify tree depth and subtree lookup |
-| `src/collectors/services.test.ts` | Mock `Bun.spawn` via a test helper; verify each source parses correctly; verify missing binary returns empty not an error |
-| `src/collectors/log-patterns.test.ts` | Inline fixture strings; verify error/warn counts; verify top pattern is the most frequent; verify timestamp extraction |
-| `src/collectors/system.test.ts` | Extend existing fixture tests: add a macOS `df -i` fixture line; verify `disk_inode_percent` is parsed correctly |
-| `src/tui/draw.test.ts` | Extend existing: verify inode critical alert is sorted before warnings |
+| `src/collectors/network.test.ts` | Four fixtures (macOS TCP, macOS UDP, Linux TCP, Linux UDP); verify `protocol` field; test line without PID produces undefined `pid`/`process_name` |
+| `src/collectors/process-tree.test.ts` | Fixture-based: 200-process `ps` output; verify default call returns ≤50 roots at depth ≤3; verify subtree lookup by PID |
+| `src/collectors/services.test.ts` | Mock `Bun.spawn`; verify each source parses correctly; verify missing binary sets `unavailable_sources`; verify empty output gives empty `services` with empty `unavailable_sources` |
+| `src/collectors/log-patterns.test.ts` | Inline fixture strings; verify `truncated: true` when fetch hits 10KB cap; verify `lines_analyzed` = actual lines (not requested); verify error/warn counts; verify top pattern by frequency |
+| `src/collectors/system.test.ts` | Extend: add macOS `df -i` fixture line; verify `disk_inode_percent` is parsed correctly |
+| `src/tui/draw.test.ts` | Extend: verify inode critical alert sorts before disk/CPU warnings |
 
 ---
 
