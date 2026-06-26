@@ -1,0 +1,17 @@
+[{
+  "Name": "/api",
+  "RestartCount": 0,
+  "State": {
+    "Status": "running",
+    "ExitCode": 0,
+    "StartedAt": "2026-06-25T10:00:00Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "Config": { "Image": "nginx:latest" },
+  "NetworkSettings": {
+    "Ports": {
+      "80/tcp": [{ "HostIp": "0.0.0.0", "HostPort": "80" }],
+      "443/tcp": [{ "HostIp": "0.0.0.0", "HostPort": "443" }]
+    }
+  }
+}]
