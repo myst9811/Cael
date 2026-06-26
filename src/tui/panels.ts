@@ -31,7 +31,7 @@ export function renderSystemPanel(data: SystemMetrics | CollectorError): string[
   ];
 }
 
-export function renderDockerPanel(data: DockerStatus | CollectorError): string[] {
+export function renderDockerPanel(data: DockerStatus | CollectorError, cursor = -1): string[] {
   // CollectorError has no 'available' field; DockerStatus always does
   if (!("available" in data)) {
     return ["DOCKER", `  ⚠ ${(data as CollectorError).error.slice(0, 28)}`];
@@ -44,7 +44,7 @@ export function renderDockerPanel(data: DockerStatus | CollectorError): string[]
     return ["DOCKER", "  no containers"];
   }
   const lines: string[] = ["DOCKER"];
-  for (const c of d.containers.slice(0, 6)) {
+  d.containers.slice(0, 6).forEach((c, i) => {
     const icon =
       c.status === "running"    ? `${G}●${Z}` :
       c.status === "restarting" ? `${Y}↻${Z}` : `${R}✕${Z}`;
@@ -53,8 +53,13 @@ export function renderDockerPanel(data: DockerStatus | CollectorError): string[]
       c.status === "running"    ? `${G}UP  ${Z}` :
       c.status === "paused"     ? `${Y}PAUS${Z}` :
       c.status === "restarting" ? `${Y}RSTR${Z}` : `${R}DOWN${Z}`;
-    lines.push(`  ${icon} ${name} ${statusStr}`);
-  }
+    const healthStr =
+      c.health === "healthy"   ? `${G}HELTH${Z}` :
+      c.health === "unhealthy" ? `${R}UNHLT${Z}` :
+      c.health === "starting"  ? `${Y}START${Z}` : `\x1b[2mNONE ${Z}`;
+    const row = `  ${icon} ${name} ${statusStr} ${healthStr}`;
+    lines.push(i === cursor ? `\x1b[7m${row}\x1b[0m` : row);
+  });
   return lines;
 }
 
