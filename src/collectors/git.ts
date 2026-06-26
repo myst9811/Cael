@@ -15,14 +15,22 @@ export function parseUnpushedCount(output: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+/**
+ * Returns paths of all changed files from `git status --short` output,
+ * including untracked files (`??` prefix). Untracked lockfiles are a deploy
+ * risk and must not be silently excluded.
+ */
 export function parseDirtyFilePaths(output: string): string[] {
   return output
     .split("\n")
     .filter(Boolean)
-    .filter(l => !l.startsWith("??"))
     .map(l => l.slice(3).trim());
 }
 
+/**
+ * Returns how many commits the local branch is behind its upstream, or null
+ * when no upstream is configured or the output is non-numeric (git error).
+ */
 export function parseBehindCount(output: string): number | null {
   const trimmed = output.trim();
   if (!trimmed || trimmed === "no-upstream") return null;

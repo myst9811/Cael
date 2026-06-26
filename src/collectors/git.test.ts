@@ -46,17 +46,17 @@ test("parseUnpushedCount: returns null for non-numeric output", () => {
   expect(parseUnpushedCount("fatal: no upstream")).toBeNull();
 });
 
-test("parseDirtyFilePaths: returns paths for non-untracked dirty lines", () => {
+test("parseDirtyFilePaths: returns paths including untracked files", () => {
   const output = " M src/foo.ts\nM  src/bar.ts\nA  src/new.ts\n?? untracked.ts\n";
-  expect(parseDirtyFilePaths(output)).toEqual(["src/foo.ts", "src/bar.ts", "src/new.ts"]);
+  expect(parseDirtyFilePaths(output)).toEqual(["src/foo.ts", "src/bar.ts", "src/new.ts", "untracked.ts"]);
 });
 
 test("parseDirtyFilePaths: empty output returns empty array", () => {
   expect(parseDirtyFilePaths("")).toEqual([]);
 });
 
-test("parseDirtyFilePaths: excludes untracked files", () => {
-  expect(parseDirtyFilePaths("?? foo.ts\n?? bar.ts\n")).toEqual([]);
+test("parseDirtyFilePaths: untracked lockfile is included (deploy risk)", () => {
+  expect(parseDirtyFilePaths("?? bun.lock\n")).toEqual(["bun.lock"]);
 });
 
 test("parseBehindCount: parses numeric output", () => {
