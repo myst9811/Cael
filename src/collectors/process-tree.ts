@@ -43,23 +43,32 @@ export function buildTree(
     }
   }
 
-  function truncate(node: ProcessNode, depth: number): ProcessNode {
-    if (depth >= maxDepth) return { ...node, children: [] };
-    return { ...node, children: node.children.map(c => truncate(c, depth + 1)) };
+  // Shared budget counts every emitted node so a single deep root can't blow the limit
+  const budget = { remaining: limit };
+
+  function truncate(node: ProcessNode, depth: number): ProcessNode | null {
+    if (budget.remaining <= 0) return null;   // hard cap: budget exhausted → omit node
+    budget.remaining--;
+    if (depth >= maxDepth) return { ...node, children: [] };  // at depth limit: include node, no children
+    const children = node.children
+      .map(c => truncate(c, depth + 1))
+      .filter((c): c is ProcessNode => c !== null);
+    return { ...node, children };
   }
 
   if (rootPid !== undefined) {
     const root = map.get(rootPid);
     if (!root) return { roots: [] };
-    return { roots: [truncate(root, 0)] };
+    const result = truncate(root, 0);
+    return { roots: result ? [result] : [] };
   }
 
-  return {
-    roots: roots
-      .sort((a, b) => b.cpu_percent - a.cpu_percent)
-      .slice(0, limit)
-      .map(r => truncate(r, 0)),
-  };
+  const emitted = roots
+    .sort((a, b) => b.cpu_percent - a.cpu_percent)
+    .map(r => truncate(r, 0))
+    .filter((r): r is ProcessNode => r !== null);
+
+  return { roots: emitted };
 }
 
 export async function getProcessTree(rootPid?: number, maxDepth = 3, limit = 50): Promise<ProcessTree> {

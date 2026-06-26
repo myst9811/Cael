@@ -62,7 +62,11 @@ export async function getListeningPorts(): Promise<NetworkPorts> {
     const udp = udpRes.status === "fulfilled" ? parseLsofOutput(udpRes.value, "udp") : [];
     return { ports: [...tcp, ...udp] };
   } else {
-    const out = await $`ss -tulnp`.quiet().text();
-    return { ports: parseSsOutput(out) };
+    try {
+      const out = await $`ss -tulnp`.quiet().nothrow().text();
+      return { ports: parseSsOutput(out) };
+    } catch {
+      return { ports: [] };
+    }
   }
 }

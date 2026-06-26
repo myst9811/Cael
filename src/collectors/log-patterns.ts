@@ -67,7 +67,7 @@ export async function getDockerLogPatterns(
   since?: string,
 ): Promise<DockerLogPatterns> {
   const result = await getDockerLogs(container, lines, since);
-  const logLines = result.logs.split("\n").filter(l => l.trim());
+  const logLines = result.logs.split("\n").filter(l => l.trim() && l.trim() !== "[truncated]");
   const analysis = analyzeLogLines(logLines);
   return {
     container,

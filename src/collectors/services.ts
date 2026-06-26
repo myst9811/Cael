@@ -23,8 +23,15 @@ export function parseSystemctlList(output: string): ServiceEntry[] {
     const fields = line.trim().split(/\s+/);
     const unit = fields[0] ?? "";
     if (!unit.endsWith(".service")) return [];
+    // fields[2] = ACTIVE (active/inactive/failed), fields[3] = SUB (running/dead/failed/...)
+    const active = fields[2] ?? "";
+    const sub = fields[3] ?? "";
+    const status: ServiceEntry["status"] =
+      active === "active" && sub === "running" ? "running" :
+      active === "active" ? "running" :
+      active === "inactive" || sub === "dead" ? "stopped" : "unknown";
     const description = fields.slice(4).join(" ");
-    return [{ name: unit, source: "systemd" as const, status: "running" as const, description: description || undefined }];
+    return [{ name: unit, source: "systemd" as const, status, description: description || undefined }];
   });
 }
 

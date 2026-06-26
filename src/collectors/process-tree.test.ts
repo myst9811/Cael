@@ -55,6 +55,21 @@ test("buildTree: default limit=50 caps root count", () => {
   expect(tree.roots.length).toBeLessThanOrEqual(50);
 });
 
+test("buildTree: limit caps total nodes even when a single root has many descendants", () => {
+  // 1 root (pid=1, ppid=0) with 100 direct children
+  const nodes = [
+    { pid: 1, ppid: 0, name: "root", cpu_percent: 1, mem_mb: 10, children: [] },
+    ...Array.from({ length: 100 }, (_, i) => ({
+      pid: i + 2, ppid: 1, name: `child${i}`, cpu_percent: 0, mem_mb: 5, children: [],
+    })),
+  ];
+  const tree = buildTree(nodes, undefined, 3, 20);
+  // Count all emitted nodes (root + its children)
+  const countNodes = (n: ProcessNode): number => 1 + n.children.reduce((s, c) => s + countNodes(c), 0);
+  const total = tree.roots.reduce((s, r) => s + countNodes(r), 0);
+  expect(total).toBeLessThanOrEqual(20);
+});
+
 test("buildTree: maxDepth is respected", () => {
   const nodes = parsePsTree(fixture("ps-tree.txt"));
   const tree = buildTree(nodes, 1, 1);
