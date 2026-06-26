@@ -1,0 +1,12 @@
+[{
+  "Name": "/worker",
+  "RestartCount": 3,
+  "State": {
+    "Status": "exited",
+    "ExitCode": 1,
+    "StartedAt": "2026-06-25T08:00:00Z",
+    "FinishedAt": "2026-06-25T08:05:00Z"
+  },
+  "Config": { "Image": "myapp:latest" },
+  "NetworkSettings": { "Ports": {} }
+}]

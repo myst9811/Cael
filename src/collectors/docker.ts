@@ -24,8 +24,17 @@ export function parseDockerPs(output: string): DockerContainer[] {
         container.uptime = status.trim();
       }
 
+      container.health = parseHealth(status.trim());
+
       return container;
     });
+}
+
+function parseHealth(status: string): DockerContainer["health"] {
+  if (status.includes("(healthy)")) return "healthy";
+  if (status.includes("(unhealthy)")) return "unhealthy";
+  if (status.includes("(health: starting)")) return "starting";
+  return "none";
 }
 
 function normalizeState(state: string): DockerContainer["status"] {

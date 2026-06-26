@@ -89,6 +89,45 @@ test("renderDockerPanel: handles collector error", () => {
   expect(out).toContain("permission denied");
 });
 
+const dockerWithHealth: DockerStatus = {
+  available: true,
+  containers: [
+    { name: "api",    status: "running", health: "healthy",   image: "nginx:latest", ports: [] },
+    { name: "db",     status: "running", health: "unhealthy", image: "postgres:15",  ports: [] },
+    { name: "cache",  status: "running", health: "none",      image: "redis:7",      ports: [] },
+  ],
+};
+
+test("renderDockerPanel: highlights cursor row with reverse video", () => {
+  const lines = renderDockerPanel(dockerWithHealth, 0);
+  const row = lines[1] ?? "";
+  expect(row).toContain("\x1b[7m");
+});
+
+test("renderDockerPanel: non-cursor rows do not have reverse video", () => {
+  const lines = renderDockerPanel(dockerWithHealth, 0);
+  const row = lines[2] ?? "";
+  expect(row).not.toContain("\x1b[7m");
+});
+
+test("renderDockerPanel: shows HELTH for healthy container", () => {
+  expect(joined(renderDockerPanel(dockerWithHealth, -1))).toContain("HELTH");
+});
+
+test("renderDockerPanel: shows UNHLT for unhealthy container", () => {
+  expect(joined(renderDockerPanel(dockerWithHealth, -1))).toContain("UNHLT");
+});
+
+test("renderDockerPanel: shows NONE for no-health container", () => {
+  expect(joined(renderDockerPanel(dockerWithHealth, -1))).toContain("NONE");
+});
+
+test("renderDockerPanel: cursor -1 does not highlight any row", () => {
+  for (const l of renderDockerPanel(docker, -1)) {
+    expect(l).not.toContain("\x1b[7m");
+  }
+});
+
 // ── GIT ─────────────────────────────────────────────────────────────────────
 
 const git: GitStatus = {

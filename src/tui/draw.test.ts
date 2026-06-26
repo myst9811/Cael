@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { buildFrame } from "./draw";
+import { buildFrame, generateAlerts } from "./draw";
 
 const BASE_OPTS = {
   cols: 80,
@@ -51,4 +51,82 @@ test("buildFrame same line count with scrollOffset > 0 as scrollOffset 0", () =>
   const atBottom = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse, scrollOffset: 0 });
   const scrolledUp = buildFrame({ ...BASE_OPTS, mode: "SHOWING_RESULT", agentActivity: "", aiResponse: longResponse, scrollOffset: 5 });
   expect(atBottom.split("\n").length).toBe(scrolledUp.split("\n").length);
+});
+
+test("buildFrame compact: panel area shows only 3 rows of content (row 4 hidden)", () => {
+  // Compact PANEL_ROWS=3 means content rows 4 and 5 are not rendered in the panel area.
+  // Total frame height stays the same — saved rows go to the status section.
+  const sys5 = ["SYSTEM", " row1", " row2", " row3", " row4", " row5"];
+  const compact  = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", compact: true,  lastRefreshAt: 0, systemLines: sys5 });
+  const expanded = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", compact: false, lastRefreshAt: 0, systemLines: sys5 });
+  expect(compact).not.toContain(" row4");
+  expect(expanded).toContain(" row4");
+});
+
+test("buildFrame with detailLines null: no detail section", () => {
+  const frame = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", detailLines: null, lastRefreshAt: 0 });
+  expect(frame).not.toContain("image:");
+});
+
+test("buildFrame with detailLines set: detail content appears", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    detailLines: ["  nginx  RUNNING  started 2h ago", "  image: nginx:1.25  ports: none"],
+    lastRefreshAt: 0,
+  });
+  expect(frame).toContain("nginx:1.25");
+});
+
+test("buildFrame with detailLines: same total height, detail content replaces status rows", () => {
+  const without = buildFrame({ ...BASE_OPTS, mode: "IDLE", agentActivity: "", detailLines: null, lastRefreshAt: 0 });
+  const withDetail = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    detailLines: ["  row one", "  row two"],
+    lastRefreshAt: 0,
+  });
+  // Total line count stays the same — detail rows are absorbed from the status section budget
+  expect(without.split("\n").length).toBe(withDetail.split("\n").length);
+});
+
+function stripAnsi(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+test("generateAlerts: critical (✕) appears before warnings (⚠)", () => {
+  const system = {
+    cpu_percent: 95, mem_percent: 91,
+    mem_used_gb: 14.5, mem_total_gb: 16,
+    disk_used_gb: 195, disk_total_gb: 200, disk_percent: 98,
+    load_avg: [1, 1, 1] as [number, number, number],
+  };
+  const docker = { available: false, containers: [], error: "not running" };
+  const alerts = generateAlerts(system, docker);
+  expect(stripAnsi(alerts[0] ?? "")).toContain("DISK CRITICAL");
+});
+
+test("buildFrame: fresh panels contain green dot ●", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now(),
+    panelErrors: { system: false, docker: false, git: false },
+  });
+  expect(frame).toContain("●");
+});
+
+test("buildFrame: errored panel title contains red dot ○", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now(),
+    panelErrors: { system: true, docker: false, git: false },
+  });
+  expect(frame).toContain("○");
+});
+
+test("buildFrame: stale timestamp shows age annotation", () => {
+  const frame = buildFrame({
+    ...BASE_OPTS, mode: "IDLE", agentActivity: "",
+    lastRefreshAt: Date.now() - 15_000,
+    panelErrors: { system: false, docker: false, git: false },
+  });
+  expect(stripAnsi(frame)).toMatch(/\d+s old/);
 });
