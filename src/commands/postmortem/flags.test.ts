@@ -41,3 +41,19 @@ test("invalid --since value is preserved (validation is caller's job)", () => {
   const r = parsePostmortemFlags(["--since", "yesterday"]);
   expect(r.since).toBe("yesterday");
 });
+
+test("parses --template flag", () => {
+  const r = parsePostmortemFlags(["--template", "/path/to/template.md"]);
+  expect(r.template).toBe("/path/to/template.md");
+});
+
+test("--template without path throws an error", () => {
+  expect(() => parsePostmortemFlags(["--template"])).toThrow("--template requires a path");
+});
+
+test("--template does not affect other flags", () => {
+  const r = parsePostmortemFlags(["--since", "2h", "--template", "tmpl.md", "--container", "api"]);
+  expect(r.since).toBe("2h");
+  expect(r.template).toBe("tmpl.md");
+  expect(r.container).toBe("api");
+});

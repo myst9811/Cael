@@ -3,38 +3,42 @@ import { formatScoreTable, formatVerdict } from "./formatter";
 import type { ScoreResult } from "./scorer";
 
 const goResult: ScoreResult = {
-  total: 100,
+  total: 140,
   go_no_go: "GO",
   items: {
-    cpu:    { score: 20, max: 20, label: "40%" },
-    memory: { score: 20, max: 20, label: "60%" },
-    disk:   { score: 20, max: 20, label: "70%" },
-    docker: { score: 20, max: 20, label: "2/2 UP" },
-    git:    { score: 20, max: 20, label: "clean" },
+    cpu:            { score: 20, max: 20, label: "40%" },
+    memory:         { score: 20, max: 20, label: "60%" },
+    disk:           { score: 20, max: 20, label: "70%" },
+    docker:         { score: 20, max: 20, label: "2/2 UP" },
+    git:            { score: 20, max: 20, label: "clean" },
+    inodes:         { score: 20, max: 20, label: "50%" },
+    branch_upstream:{ score: 20, max: 20, label: "up to date" },
   },
 };
 
 const cautionResult: ScoreResult = {
-  total: 70,
+  total: 90,
   go_no_go: "CAUTION",
   items: {
-    cpu:    { score: 10, max: 20, label: "75%", warning: true },
-    memory: { score: 20, max: 20, label: "60%" },
-    disk:   { score: 20, max: 20, label: "70%" },
-    docker: { score: 0,  max: 20, label: "1/2 UP", details: "worker: Exited (1)", warning: true },
-    git:    { score: 20, max: 20, label: "clean" },
+    cpu:            { score: 10, max: 20, label: "75%", warning: true },
+    memory:         { score: 20, max: 20, label: "60%" },
+    disk:           { score: 20, max: 20, label: "70%" },
+    docker:         { score: 0,  max: 20, label: "1/2 UP", details: "worker: Exited (1)", warning: true },
+    git:            { score: 20, max: 20, label: "clean" },
+    inodes:         { score: 20, max: 20, label: "50%" },
+    branch_upstream:{ score: 0,  max: 20, label: "10 behind", warning: true },
   },
 };
 
 test("formatVerdict: GO result shows score and GO", () => {
   const out = formatVerdict(goResult);
-  expect(out).toContain("100/100");
+  expect(out).toContain("140/140");
   expect(out).toContain("GO");
 });
 
 test("formatVerdict: CAUTION result shows warning symbol", () => {
   const out = formatVerdict(cautionResult);
-  expect(out).toContain("70/100");
+  expect(out).toContain("90/140");
   expect(out).toContain("CAUTION");
   expect(out).toContain("⚠");
 });
@@ -71,11 +75,13 @@ test("formatScoreTable: failing item shows cross and details", () => {
   expect(out).toContain("0/20");
 });
 
-test("formatScoreTable: has rows for all five categories", () => {
+test("formatScoreTable: has rows for all seven categories", () => {
   const out = formatScoreTable(goResult);
   expect(out).toContain("CPU");
   expect(out).toContain("Memory");
   expect(out).toContain("Disk");
+  expect(out).toContain("Inodes");
   expect(out).toContain("Docker");
   expect(out).toContain("Git");
+  expect(out).toContain("Branch");
 });

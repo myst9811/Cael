@@ -10,7 +10,7 @@ import { runWatch } from "./src/commands/watch";
 import { resolveProvider } from "./src/config";
 import { printLogo } from "./src/assets/logo";
 
-const SUBCOMMANDS = ["ask", "config", "deploy-check", "doctor", "postmortem", "watch"] as const;
+const SUBCOMMANDS = ["ask", "config", "deploy-check", "doctor", "postmortem", "update", "watch"] as const;
 type Subcommand = typeof SUBCOMMANDS[number];
 
 const HELP_TEXT = `
@@ -27,10 +27,12 @@ Subcommands:
   config show                 Show current configuration
   config set <key> <value>    Set a config value
   doctor                      Check dependencies and configuration
+  update                      Check for and install the latest cael release
 
 Options:
   --provider <spec>    Override provider for this run
                        (e.g. anthropic:claude-sonnet-4-6, openai:gpt-4o, ollama:llama3)
+  --version, -V        Show version and exit
   --help, -h           Show this help
 
 Provider configuration (in order of precedence):
@@ -52,6 +54,7 @@ export interface ParsedArgs {
   prompt?: string;
   help?: boolean;
   configArgs?: string[];
+  postmortemArgs?: string[];
 }
 
 export function parseArgs(args: string[], resolvedProvider: string | null): ParsedArgs {
@@ -78,6 +81,10 @@ export function parseArgs(args: string[], resolvedProvider: string | null): Pars
 
   if (first === "doctor") {
     return { provider, subcommand: "doctor" };
+  }
+
+  if (first === "postmortem") {
+    return { provider, subcommand: "postmortem", postmortemArgs: remaining.slice(1) };
   }
 
   if (first && (SUBCOMMANDS as readonly string[]).includes(first)) {
@@ -110,6 +117,13 @@ async function repl(providerSpec: string): Promise<void> {
 
 if (import.meta.main) {
   const rawArgs = process.argv.slice(2);
+
+  if (rawArgs.includes("--version") || rawArgs.includes("-V")) {
+    const { printVersion } = await import("./src/version");
+    printVersion();
+    process.exit(0);
+  }
+
   let resolvedProvider: string | null = null;
   try {
     resolvedProvider = await resolveProvider();
@@ -133,7 +147,7 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  const { provider: providerSpec, subcommand, prompt, configArgs } = parsed;
+  const { provider: providerSpec, subcommand, prompt, configArgs, postmortemArgs } = parsed;
 
   if (subcommand === "config") {
     await runConfig(configArgs ?? []).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
@@ -143,6 +157,12 @@ if (import.meta.main) {
   if (subcommand === "doctor") {
     const allOk = await runDoctor().catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
     process.exit(allOk ? 0 : 1);
+  }
+
+  if (subcommand === "update") {
+    const { runUpdate } = await import("./src/commands/update");
+    await runUpdate().catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
+    process.exit(0);
   }
 
   if (!providerSpec) {
@@ -168,7 +188,7 @@ if (import.meta.main) {
   } else if (subcommand === "deploy-check") {
     runDeployCheck(provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (subcommand === "postmortem") {
-    runPostmortem(prompt ?? "", provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
+    runPostmortem(postmortemArgs ?? [], provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (subcommand === "watch") {
     runWatch(provider).catch((e: unknown) => { console.error(e instanceof Error ? e.message : String(e)); process.exit(1); });
   } else if (prompt) {

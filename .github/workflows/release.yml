@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+env:
+  HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -12,6 +15,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
 
@@ -20,10 +26,14 @@ jobs:
 
       - name: Build all targets
         run: |
-          bun build --compile --target=bun-darwin-arm64 index.ts --outfile cael-darwin-arm64
-          bun build --compile --target=bun-darwin-x64 index.ts --outfile cael-darwin-x64
-          bun build --compile --target=bun-linux-x64 index.ts --outfile cael-linux-x64
-          bun build --compile --target=bun-linux-arm64 index.ts --outfile cael-linux-arm64
+          VERSION=${GITHUB_REF_NAME}
+          bun build --compile --target=bun-darwin-arm64 --define "BUILD_VERSION=\"${VERSION}\"" index.ts --outfile cael-darwin-arm64
+          bun build --compile --target=bun-darwin-x64   --define "BUILD_VERSION=\"${VERSION}\"" index.ts --outfile cael-darwin-x64
+          bun build --compile --target=bun-linux-x64    --define "BUILD_VERSION=\"${VERSION}\"" index.ts --outfile cael-linux-x64
+          bun build --compile --target=bun-linux-arm64  --define "BUILD_VERSION=\"${VERSION}\"" index.ts --outfile cael-linux-arm64
+
+      - name: Generate checksums
+        run: sha256sum cael-darwin-arm64 cael-darwin-x64 cael-linux-x64 cael-linux-arm64 > checksums.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -34,3 +44,36 @@ jobs:
             cael-darwin-x64
             cael-linux-x64
             cael-linux-arm64
+            checksums.sha256
+
+      - name: Update Homebrew tap
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          ARM64_SHA=$(grep cael-darwin-arm64 checksums.sha256 | cut -d' ' -f1)
+          VERSION=${GITHUB_REF_NAME}
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/myst9811/homebrew-cael.git tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/cael.rb << EOF
+          class Cael < Formula
+            desc "Local DevOps AI agent for incident investigation"
+            homepage "https://github.com/myst9811/Cael"
+            version "${VERSION}"
+            on_macos do
+              on_arm do
+                url "https://github.com/myst9811/Cael/releases/download/${VERSION}/cael-darwin-arm64"
+                sha256 "${ARM64_SHA}"
+                def install
+                  bin.install "cael-darwin-arm64" => "cael"
+                end
+              end
+              on_intel do
+                odie "cael does not provide a macOS x86_64 binary."
+              end
+            end
+          end
+          EOF
+          cd tap
+          git config user.email "ci@cael"
+          git config user.name "Cael CI"
+          git add Formula/cael.rb
+          git diff --cached --quiet || (git commit -m "cael ${VERSION}" && git push)
